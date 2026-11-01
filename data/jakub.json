@@ -1,0 +1,59 @@
+{
+  "text": "Hello jakub.",
+  "messages": [
+    {
+      "sender": "jakub",
+      "recipient": "Gu",
+      "timestamp": "2026-10-31T17:46:34+00:00",
+      "text": "You fail to kill the bastard"
+    },
+    {
+      "sender": "Gu",
+      "recipient": "jakub",
+      "timestamp": "2026-10-31T17:48:48+00:00",
+      "text": "i try harder"
+    },
+    {
+      "sender": "jakub",
+      "recipient": "Gu",
+      "timestamp": "2026-10-31T17:48:59+00:00",
+      "text": "he's dead"
+    },
+    {
+      "sender": "jakub",
+      "recipient": "Obi",
+      "timestamp": "2026-10-31T17:50:03+00:00",
+      "text": "You can't sleep"
+    },
+    {
+      "sender": "Obi",
+      "recipient": "jakub",
+      "timestamp": "2026-10-31T17:50:18+00:00",
+      "text": "I am hainted by the spirits"
+    },
+    {
+      "sender": "jakub",
+      "recipient": "Obi",
+      "timestamp": "2026-10-31T17:52:36+00:00",
+      "text": "You see a hobbit"
+    },
+    {
+      "sender": "jakub",
+      "recipient": "Neal",
+      "timestamp": "2026-10-31T18:01:59+00:00",
+      "text": "Are you still praying?"
+    },
+    {
+      "sender": "jakub",
+      "recipient": "Fede",
+      "timestamp": "2026-10-31T18:20:15+00:00",
+      "text": "Your character is strong"
+    },
+    {
+      "sender": "Fede",
+      "recipient": "jakub",
+      "timestamp": "2026-10-31T18:20:30+00:00",
+      "text": "Gggg"
+    }
+  ]
+}

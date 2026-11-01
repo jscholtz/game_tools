@@ -1,0 +1,29 @@
+{
+  "character": "Tells Tall Tales (Tail)",
+  "race": "Tabaxi",
+  "gender": "Male",
+  "class": "Bard of Eloquence",
+  "level": 2,
+  "passive_perception": 11,
+  "insight": 1,
+  "messages": [
+    {
+      "sender": "jakub",
+      "recipient": "Gu",
+      "timestamp": "2026-10-31T17:46:34+00:00",
+      "text": "You fail to kill the bastard"
+    },
+    {
+      "sender": "Gu",
+      "recipient": "jakub",
+      "timestamp": "2026-10-31T17:48:48+00:00",
+      "text": "i try harder"
+    },
+    {
+      "sender": "jakub",
+      "recipient": "Gu",
+      "timestamp": "2026-10-31T17:48:59+00:00",
+      "text": "he's dead"
+    }
+  ]
+}

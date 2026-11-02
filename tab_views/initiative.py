@@ -106,8 +106,8 @@ def render_initiative_tab() -> None:
             color: white;
         }
         [class*="st-key-initiative-next-turn-"] button {
-            background-color: #2563eb;
-            border-color: #2563eb;
+            background-color: #163f70;
+            border-color: #3b82f6;
             color: white;
         }
         [class*="st-key-current-combatant-"] {

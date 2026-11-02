@@ -1,7 +1,9 @@
 import json
 
 import streamlit as st
+from typesafe_sdk import TypeSafeError
 
+from .message_injection import get_message_injection_checker
 from .user_data import DATA_DIR, save_user_notes
 
 
@@ -31,8 +33,17 @@ def render_notes_tab(username: str):
 
     if save_notes:
         try:
-            save_user_notes(username, edited_notes)
-        except (OSError, ValueError) as error:
-            st.error(f"Could not save notes: {error}")
+            is_injection = get_message_injection_checker().check(edited_notes)
+        except (KeyError, TypeSafeError) as error:
+            st.error(f"Could not check notes safety: {error}")
         else:
-            st.success("Notes saved.")
+            if is_injection:
+                st.toast("No, no, no...")
+                return
+
+            try:
+                save_user_notes(username, edited_notes)
+            except (OSError, ValueError) as error:
+                st.error(f"Could not save notes: {error}")
+            else:
+                st.success("Notes saved.")

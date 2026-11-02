@@ -78,6 +78,6 @@ def render_messages_tab(username: str, is_dm: bool, users: dict):
         ]
         conversation_partner = st.selectbox("Player", player_names)
     else:
-        conversation_partner = "jakub"
+        conversation_partner = "dm"
 
     _show_chat(username, conversation_partner, is_dm)

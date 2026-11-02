@@ -1,0 +1,55 @@
+{
+  "text": "Hello dm.",
+  "notes": "",
+  "messages": [
+    {
+      "sender": "dm",
+      "recipient": "Gu",
+      "timestamp": "2026-11-02T09:25:59+00:00",
+      "text": "Hello!"
+    },
+    {
+      "sender": "Gu",
+      "recipient": "dm",
+      "timestamp": "2026-11-02T09:51:59+00:00",
+      "text": "<b>INJECTION_TEST</b>"
+    }
+  ],
+  "initiative_tracker": {
+    "combatants": [
+      {
+        "id": "293923dad95b46ec95bd335486fa2a1c",
+        "name": "Tails",
+        "initiative": 19,
+        "dead": false,
+        "current_hp": 10,
+        "max_hp": 10
+      },
+      {
+        "id": "d0bff423013248e3bb529b41538f630a",
+        "name": "Bandit",
+        "initiative": 16,
+        "dead": false,
+        "current_hp": 13,
+        "max_hp": 13
+      },
+      {
+        "id": "10071ab3f0e74f20a622dd71a590e965",
+        "name": "Bandit",
+        "initiative": 13,
+        "dead": false,
+        "current_hp": 48,
+        "max_hp": 54
+      },
+      {
+        "id": "4398a37abb1346449a84b27136735e19",
+        "name": "Neal",
+        "initiative": 12,
+        "dead": false,
+        "current_hp": 10,
+        "max_hp": 10
+      }
+    ],
+    "current_turn_id": "293923dad95b46ec95bd335486fa2a1c"
+  }
+}

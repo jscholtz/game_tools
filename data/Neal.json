@@ -6,18 +6,6 @@
   "level": 2,
   "passive_perception": 18,
   "insight": 3,
-  "messages": [
-    {
-      "sender": "Neal",
-      "recipient": "jakub",
-      "timestamp": "2026-11-01T09:04:18+00:00",
-      "text": "I pray, i never expected answers"
-    },
-    {
-      "sender": "jakub",
-      "recipient": "Neal",
-      "timestamp": "2026-11-01T09:05:49+00:00",
-      "text": "Answrers arrive"
-    }
-  ]
+  "notes": "",
+  "messages": []
 }

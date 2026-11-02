@@ -41,3 +41,12 @@ def send_message(sender: str, recipient: str, text: str):
 
     sender_file.write_text(json.dumps(sender_data, indent=2) + "\n", encoding="utf-8")
     recipient_file.write_text(json.dumps(recipient_data, indent=2) + "\n", encoding="utf-8")
+
+
+def save_user_notes(username: str, notes: str) -> None:
+    user_data_file, user_data = read_user_data(username)
+    user_data["notes"] = notes
+    user_data_file.write_text(
+        json.dumps(user_data, indent=2) + "\n",
+        encoding="utf-8",
+    )

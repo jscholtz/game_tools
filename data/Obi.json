@@ -6,6 +6,19 @@
   "level": 2,
   "passive_perception": 10,
   "insight": 0,
-  "notes": "",
-  "messages": []
+  "notes": "Desmond prova a toccarmi mentre cammino",
+  "messages": [
+    {
+      "sender": "Obi",
+      "recipient": "dm",
+      "timestamp": "2026-11-02T18:31:30+00:00",
+      "text": "Picchio desmond"
+    },
+    {
+      "sender": "dm",
+      "recipient": "Obi",
+      "timestamp": "2026-11-02T18:32:16+00:00",
+      "text": "Desmond e ferrito"
+    }
+  ]
 }

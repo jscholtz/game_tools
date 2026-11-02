@@ -38,7 +38,7 @@ def render_notes_tab(username: str):
             st.error(f"Could not check notes safety: {error}")
         else:
             if is_injection:
-                st.toast("No, no, no...")
+                st.toast("No, no, no...!")
                 return
 
             try:

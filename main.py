@@ -56,9 +56,12 @@ def main():
         st.session_state.logged_in_user = username
     user_details = USERS[username]
 
-    st.title("D&D Campaign Portal")
-    st.subheader(f"Welcome, {username}")
-    st.caption(f"Campaign role: {user_details['role']}")
+    if user_details["role"] == "dm":
+        st.subheader("Dungeon Master")
+    else:
+        st.title("D&D Campaign Portal")
+        st.subheader(f"Welcome, {username}")
+        st.caption(f"Campaign role: {user_details['role']}")
 
     tab_names = ["Character"]
     if user_details["role"] == "player":
@@ -76,7 +79,7 @@ def main():
             render_notes_tab(username)
 
     with next(tabs):
-        render_public_tab()
+        render_public_tab(is_dm=user_details["role"] == "dm")
 
     with next(tabs):
         render_messages_tab(

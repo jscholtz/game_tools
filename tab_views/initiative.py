@@ -1,9 +1,29 @@
 import json
+from copy import deepcopy
 from uuid import uuid4
 
 import streamlit as st
 
 from .user_data import read_user_data
+
+
+@st.dialog("Reset initiative tracker?")
+def confirm_reset_tracker() -> None:
+    st.warning("This will replace the current tracker with its saved default state.")
+    confirm_column, cancel_column = st.columns(2)
+    if confirm_column.button("Reset tracker", type="primary"):
+        try:
+            _, dm_data = read_user_data("dm")
+            default_tracker = dm_data.get("initiate_tracker_default")
+            if not isinstance(default_tracker, dict):
+                raise ValueError("No valid default initiative tracker is configured.")
+            save_tracker(deepcopy(default_tracker))
+        except (OSError, json.JSONDecodeError, ValueError) as error:
+            st.error(f"Could not reset initiative tracker: {error}")
+        else:
+            st.rerun()
+    if cancel_column.button("Cancel"):
+        st.rerun()
 
 
 @st.dialog("Change initiative")
@@ -165,9 +185,8 @@ def render_initiative_tab() -> None:
 
     if not combatants:
         st.caption("No combatants yet.")
-        return
 
-    next_turn_column, reorder_column = st.columns(2)
+    next_turn_column, reorder_column, reset_column = st.columns(3)
     living_combatants = [actor for actor in combatants if not actor["dead"]]
     with next_turn_column.container(key="initiative-next-turn"):
         if st.button("Next turn", disabled=not living_combatants, type="primary"):
@@ -188,7 +207,10 @@ def render_initiative_tab() -> None:
                 st.rerun()
 
     with reorder_column.container(key="initiative-reorder"):
-        reorder = st.button("Reorder by initiative")
+        reorder = st.button("Reorder by initiative", disabled=not combatants)
+
+    if reset_column.button("Reset to default"):
+        confirm_reset_tracker()
 
     if reorder:
         combatants.sort(key=lambda actor: actor["initiative"], reverse=True)

@@ -45,7 +45,7 @@ def _show_chat(username: str, conversation_partner: str, is_dm: bool):
             st.error(f"Could not check message safety: {error}")
         else:
             if is_injection:
-                st.toast("No, no, no...")
+                st.toast("No, no, no...!")
             else:
                 try:
                     send_message(username, conversation_partner, prompt.strip())

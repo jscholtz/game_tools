@@ -6,30 +6,5 @@
   "level": 2,
   "passive_perception": 10,
   "insight": 0,
-  "messages": [
-    {
-      "sender": "jakub",
-      "recipient": "Obi",
-      "timestamp": "Unknown (legacy message)",
-      "text": "You see a hobbit."
-    },
-    {
-      "sender": "jakub",
-      "recipient": "Obi",
-      "timestamp": "2026-10-31T17:50:03+00:00",
-      "text": "You can't sleep"
-    },
-    {
-      "sender": "Obi",
-      "recipient": "jakub",
-      "timestamp": "2026-10-31T17:50:18+00:00",
-      "text": "I am hainted by the spirits"
-    },
-    {
-      "sender": "jakub",
-      "recipient": "Obi",
-      "timestamp": "2026-10-31T17:52:36+00:00",
-      "text": "You see a hobbit"
-    }
-  ]
+  "messages": []
 }

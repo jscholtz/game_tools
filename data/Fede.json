@@ -6,18 +6,5 @@
   "level": 2,
   "passive_perception": 10,
   "insight": 0,
-  "messages": [
-    {
-      "sender": "jakub",
-      "recipient": "Fede",
-      "timestamp": "2026-10-31T18:20:15+00:00",
-      "text": "Your character is strong"
-    },
-    {
-      "sender": "Fede",
-      "recipient": "jakub",
-      "timestamp": "2026-10-31T18:20:30+00:00",
-      "text": "Gggg"
-    }
-  ]
+  "messages": []
 }

@@ -97,18 +97,12 @@ def save_combatant_hp(combatant_id: str, current_hp: int) -> None:
 
 
 def render_initiative_tab() -> None:
-    st.subheader("Initiative Tracker")
     st.markdown(
         """
         <style>
         .st-key-initiative-add button {
             background-color: #238636;
             border-color: #238636;
-            color: white;
-        }
-        [class*="st-key-initiative-delete-"] button {
-            background-color: #b42318;
-            border-color: #b42318;
             color: white;
         }
         [class*="st-key-initiative-next-turn-"] button {
@@ -229,7 +223,8 @@ def render_initiative_tab() -> None:
                 [4, 1.2, 1, 0.5, 0.5, 0.5, 0.5]
             )
             name_column.markdown(
-                f"**{actor['name']}**" + (" — DEAD" if actor["dead"] else "")
+                f"**{actor['name']}** (max hitpoints: {actor['max_hp']})"
+                + (" — DEAD" if actor["dead"] else "")
             )
             initiative_column.markdown(f"**Initiative:** {actor['initiative']}")
             hp_value_column.number_input(
@@ -240,7 +235,6 @@ def render_initiative_tab() -> None:
                 key=hp_key,
                 label_visibility="collapsed",
             )
-            hp_value_column.caption(f"/ {actor['max_hp']}")
             if hp_save_column.button(
                 "❤️", help="Save hit points", key=f"hp_save_{actor['id']}"
             ):

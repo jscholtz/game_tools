@@ -1,10 +1,10 @@
-import json
 from copy import deepcopy
 from uuid import uuid4
 
 import streamlit as st
+from pymongo.errors import PyMongoError
 
-from .user_data import read_user_data
+from .database import load_tracker, load_tracker_default, save_tracker
 
 
 @st.dialog("Reset initiative tracker?")
@@ -13,12 +13,11 @@ def confirm_reset_tracker() -> None:
     confirm_column, cancel_column = st.columns(2)
     if confirm_column.button("Reset tracker", type="primary"):
         try:
-            _, dm_data = read_user_data("dm")
-            default_tracker = dm_data.get("initiate_tracker_default")
+            default_tracker = load_tracker_default()
             if not isinstance(default_tracker, dict):
                 raise ValueError("No valid default initiative tracker is configured.")
             save_tracker(deepcopy(default_tracker))
-        except (OSError, json.JSONDecodeError, ValueError) as error:
+        except (PyMongoError, ValueError) as error:
             st.error(f"Could not reset initiative tracker: {error}")
         else:
             st.rerun()
@@ -30,7 +29,7 @@ def confirm_reset_tracker() -> None:
 def edit_initiative(combatant_id: str) -> None:
     try:
         tracker = load_tracker()
-    except (OSError, json.JSONDecodeError, ValueError) as error:
+    except (PyMongoError, ValueError) as error:
         st.error(f"Could not load initiative tracker: {error}")
         return
 
@@ -52,54 +51,10 @@ def edit_initiative(combatant_id: str) -> None:
         actor["initiative"] = int(initiative)
         try:
             save_tracker(tracker)
-        except (OSError, json.JSONDecodeError, ValueError) as error:
+        except (PyMongoError, ValueError) as error:
             st.error(f"Could not update initiative: {error}")
         else:
             st.rerun()
-
-
-def load_tracker() -> dict:
-    _, dm_data = read_user_data("dm")
-    tracker = dm_data.get(
-        "initiative_tracker",
-        {"combatants": [], "current_turn_id": None},
-    )
-
-    if not isinstance(tracker, dict) or not isinstance(tracker.get("combatants"), list):
-        raise ValueError("Initiative tracker data must contain a combatants list.")
-
-    for combatant in tracker["combatants"]:
-        if (
-            not isinstance(combatant, dict)
-            or not isinstance(combatant.get("id"), str)
-            or not isinstance(combatant.get("name"), str)
-            or not isinstance(combatant.get("initiative"), int)
-            or not isinstance(combatant.get("dead"), bool)
-        ):
-            raise ValueError("Initiative tracker contains an invalid combatant.")
-        current_hp = combatant.setdefault("current_hp", 10)
-        if not isinstance(current_hp, int):
-            raise ValueError("Combatant hit points are invalid.")
-        max_hp = combatant.setdefault("max_hp", max(current_hp, 1))
-        if (
-            not isinstance(current_hp, int)
-            or not isinstance(max_hp, int)
-            or current_hp < 0
-            or max_hp < 1
-            or current_hp > max_hp
-        ):
-            raise ValueError("Combatant hit points are invalid.")
-
-    return {
-        "combatants": tracker["combatants"],
-        "current_turn_id": tracker.get("current_turn_id"),
-    }
-
-
-def save_tracker(tracker: dict) -> None:
-    dm_file, dm_data = read_user_data("dm")
-    dm_data["initiative_tracker"] = tracker
-    dm_file.write_text(json.dumps(dm_data, indent=2) + "\n", encoding="utf-8")
 
 
 def save_combatant_hp(combatant_id: str, current_hp: int) -> None:
@@ -110,7 +65,7 @@ def save_combatant_hp(combatant_id: str, current_hp: int) -> None:
         )
         actor["current_hp"] = min(current_hp, actor["max_hp"])
         save_tracker(tracker)
-    except (OSError, json.JSONDecodeError, ValueError, StopIteration) as error:
+    except (PyMongoError, ValueError, StopIteration) as error:
         st.error(f"Could not update hit points: {error}")
     else:
         st.rerun()
@@ -142,7 +97,7 @@ def render_initiative_tab() -> None:
     )
     try:
         tracker = load_tracker()
-    except (OSError, json.JSONDecodeError, ValueError) as error:
+    except (PyMongoError, ValueError) as error:
         st.error(f"Could not load initiative tracker: {error}")
         return
 
@@ -178,7 +133,7 @@ def render_initiative_tab() -> None:
             combatants.append(new_combatant)
             try:
                 save_tracker(tracker)
-            except (OSError, json.JSONDecodeError, ValueError) as error:
+            except (PyMongoError, ValueError) as error:
                 st.error(f"Could not save initiative tracker: {error}")
             else:
                 st.rerun()
@@ -201,7 +156,7 @@ def render_initiative_tab() -> None:
             tracker["current_turn_id"] = next_actor["id"]
             try:
                 save_tracker(tracker)
-            except (OSError, json.JSONDecodeError, ValueError) as error:
+            except (PyMongoError, ValueError) as error:
                 st.error(f"Could not advance initiative: {error}")
             else:
                 st.rerun()
@@ -216,7 +171,7 @@ def render_initiative_tab() -> None:
         combatants.sort(key=lambda actor: actor["initiative"], reverse=True)
         try:
             save_tracker(tracker)
-        except (OSError, json.JSONDecodeError, ValueError) as error:
+        except (PyMongoError, ValueError) as error:
             st.error(f"Could not reorder initiative: {error}")
         else:
             st.rerun()
@@ -275,7 +230,7 @@ def render_initiative_tab() -> None:
                     tracker["current_turn_id"] = None
                 try:
                     save_tracker(tracker)
-                except (OSError, json.JSONDecodeError, ValueError) as error:
+                except (PyMongoError, ValueError) as error:
                     st.error(f"Could not update combatant status: {error}")
                 else:
                     st.rerun()
@@ -287,7 +242,7 @@ def render_initiative_tab() -> None:
                         tracker["current_turn_id"] = None
                     try:
                         save_tracker(tracker)
-                    except (OSError, json.JSONDecodeError, ValueError) as error:
+                    except (PyMongoError, ValueError) as error:
                         st.error(f"Could not delete combatant: {error}")
                     else:
                         st.rerun()

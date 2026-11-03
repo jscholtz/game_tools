@@ -1,11 +1,12 @@
-import json
 from datetime import datetime
 
 import streamlit as st
+from pymongo.errors import PyMongoError
 from typesafe_sdk import TypeSafeError
 
 from .message_injection import get_message_injection_checker
-from .user_data import read_user_data, send_message
+from .user_data import send_message
+from .database import load_chat_messages
 
 
 def format_timestamp(timestamp: str) -> str:
@@ -18,23 +19,10 @@ def format_timestamp(timestamp: str) -> str:
 @st.fragment(run_every=5)
 def _show_chat(username: str, conversation_partner: str, is_dm: bool):
     try:
-        _, user_data = read_user_data(username)
-    except FileNotFoundError:
-        st.error(f"User data file not found for {username}.")
-        return
-    except json.JSONDecodeError as error:
-        st.error(f"Invalid JSON for {username}: {error}")
-        return
-    except (OSError, ValueError) as error:
+        messages = load_chat_messages(username, is_dm, conversation_partner)
+    except PyMongoError as error:
         st.error(f"Could not load messages: {error}")
         return
-
-    messages = user_data["messages"]
-    if not is_dm:
-        messages = [
-            message for message in messages
-            if {message["sender"], message["recipient"]} == {username, conversation_partner}
-        ]
 
     prompt = st.chat_input("Write a message")
     if prompt and prompt.strip():
@@ -49,11 +37,7 @@ def _show_chat(username: str, conversation_partner: str, is_dm: bool):
             else:
                 try:
                     send_message(username, conversation_partner, prompt.strip())
-                except FileNotFoundError:
-                    st.error(f"User data file not found for {conversation_partner}.")
-                except json.JSONDecodeError as error:
-                    st.error(f"Invalid JSON while sending message: {error}")
-                except (OSError, ValueError) as error:
+                except PyMongoError as error:
                     st.error(f"Could not send message: {error}")
                 else:
                     st.rerun()

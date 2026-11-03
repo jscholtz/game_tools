@@ -1,17 +1,17 @@
 import hashlib
+
 import streamlit as st
+from pymongo.errors import PyMongoError
 
 from tab_views.character import render_character_tab
+from tab_views.database import get_users
 from tab_views.initiative import render_initiative_tab
 from tab_views.messages import render_messages_tab
 from tab_views.notes import render_notes_tab
 from tab_views.public_board import render_public_tab
 
-USERS = st.secrets["users"]
-
-
-def login_user(username: str, password: str):
-    user = USERS.get(username)
+def login_user(username: str, password: str, users: dict):
+    user = users.get(username)
     password_hash = hashlib.sha256(password.encode()).hexdigest()
     if user is not None and user["password_hash"] == password_hash:
         return user
@@ -22,13 +22,18 @@ def main():
     if "logged_in_user" not in st.session_state:
         st.session_state.logged_in_user = None
 
-    active_user = st.session_state.logged_in_user
-    page_layout = "wide" if USERS.get(active_user, {}).get("role") == "dm" else "centered"
+    page_layout = "wide" if st.session_state.get("logged_in_role") == "dm" else "centered"
     st.set_page_config(
         page_title="D&D Campaign Portal",
         page_icon="🐉",
         layout=page_layout,
     )
+
+    try:
+        users = get_users()
+    except (KeyError, PyMongoError) as error:
+        st.error(f"Could not connect to MongoDB or load login records: {error}")
+        return
 
     if st.session_state.logged_in_user is None:
         st.title("D&D Campaign Portal")
@@ -40,9 +45,10 @@ def main():
             submitted = st.form_submit_button("Log in")
 
         if submitted:
-            user = login_user(username, password)
+            user = login_user(username, password, users)
             if user is not None:
                 st.session_state.logged_in_user = username
+                st.session_state.logged_in_role = user["role"]
                 st.success(f"Welcome, {username}!")
                 st.rerun()
             else:
@@ -51,10 +57,15 @@ def main():
         return
 
     username = st.session_state.logged_in_user
-    if username == "jakub":
-        username = "dm"
-        st.session_state.logged_in_user = username
-    user_details = USERS[username]
+    user_details = users.get(username)
+    if user_details is None:
+        st.session_state.logged_in_user = None
+        st.session_state.logged_in_role = None
+        st.error("This account no longer exists. Please log in again.")
+        return
+    if st.session_state.get("logged_in_role") != user_details["role"]:
+        st.session_state.logged_in_role = user_details["role"]
+        st.rerun()
 
     if user_details["role"] == "dm":
         st.subheader("Dungeon Master")
@@ -85,7 +96,7 @@ def main():
         render_messages_tab(
             username,
             user_details["role"] == "dm",
-            USERS,
+            users,
         )
 
     if user_details["role"] == "dm":
@@ -94,6 +105,7 @@ def main():
 
     if st.sidebar.button("Log out"):
         st.session_state.logged_in_user = None
+        st.session_state.logged_in_role = None
         st.rerun()
 
 

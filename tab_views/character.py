@@ -1,21 +1,16 @@
-import json
-
 import streamlit as st
+from pymongo.errors import PyMongoError
 
-from .user_data import DATA_DIR
+from .database import load_private_data
 
 
 def render_character_tab(username: str):
-    user_data_file = DATA_DIR / f"{username}.json"
     try:
-        with user_data_file.open(encoding="utf-8") as file:
-            user_data = json.load(file)
+        user_data = load_private_data(username)
     except FileNotFoundError:
-        st.error(f"User data file not found: {user_data_file.name}")
-    except json.JSONDecodeError as error:
-        st.error(f"Invalid JSON in {user_data_file.name}: {error}")
-    except OSError as error:
-        st.error(f"Could not read {user_data_file.name}: {error}")
+        st.error(f"User data not found for {username}.")
+    except PyMongoError as error:
+        st.error(f"Could not load character data: {error}")
     else:
         if "character" in user_data:
             with st.container(border=True):

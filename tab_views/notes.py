@@ -1,30 +1,25 @@
-import json
-
 import streamlit as st
+from pymongo.errors import PyMongoError
 from typesafe_sdk import TypeSafeError
 
+from .database import load_private_data
 from .message_injection import get_message_injection_checker
-from .user_data import DATA_DIR, save_user_notes
+from .user_data import save_user_notes
 
 
 def render_notes_tab(username: str):
-    user_data_file = DATA_DIR / f"{username}.json"
     try:
-        with user_data_file.open(encoding="utf-8") as file:
-            user_data = json.load(file)
+        user_data = load_private_data(username)
     except FileNotFoundError:
-        st.error(f"User data file not found: {user_data_file.name}")
+        st.error(f"User data not found for {username}.")
         return
-    except json.JSONDecodeError as error:
-        st.error(f"Invalid JSON in {user_data_file.name}: {error}")
-        return
-    except OSError as error:
-        st.error(f"Could not read {user_data_file.name}: {error}")
+    except PyMongoError as error:
+        st.error(f"Could not load notes: {error}")
         return
 
     notes = user_data.get("notes", "")
     if not isinstance(notes, str):
-        st.error(f"'notes' in {user_data_file.name} must be a string.")
+        st.error("Notes data must be a string.")
         return
 
     with st.form("player_notes"):
@@ -43,7 +38,7 @@ def render_notes_tab(username: str):
 
             try:
                 save_user_notes(username, edited_notes)
-            except (OSError, ValueError) as error:
+            except (PyMongoError, ValueError) as error:
                 st.error(f"Could not save notes: {error}")
             else:
                 st.success("Notes saved.")

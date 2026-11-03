@@ -1,5 +1,7 @@
 # Session 001
 
+## Session Summary
+
 Each one of you has vague memories of living and breathing in a world when all goes blank. The next thing you remember is an endless fog. It seems like a dream: just like what the old man was saying.
 
 Eventually you managed to climb a hill and there you found a group of people including a meek human priest, angry warlock human teenager,  slightly old slightly chubby tabaxi who has a way with words and an unusually strong woman with a slight green tint. 
@@ -20,7 +22,7 @@ Exhausted, spent, you are happy to finally see color again, the deep scent of th
 
 # Session 002
 
-### Session Summary
+## Session Summary
 
 **Arrival at the Village**
 The party notices an unnatural phenomenon: moss growing uniformly on all sides of the surrounding trees. Upon entering the village, their presence draws curiosity and light scrutiny from the locals due to their strange demeanor. However, they are quickly accepted and make their way to the local inn, where they begin gathering information on the region's mounting troubles.
@@ -54,6 +56,8 @@ Recognizing a potential opportunity, the priest tosses a coin to the scouts, str
 ![Hurd's Band ](Hurds_band.png)
 
 # Session 003
+
+## Session Summary
 
 - **Encounter with Brown Leaf:** After leaving the bandits, the group realizes they are being followed. A fast-talking, socially awkward hobbit named **Brown Leaf** jumps out and introduces himself. He reveals he overheard them discussing defeating Bogdan’s main group of bandits and proposes an alliance, inviting them to visit his people for mutual help. 
 - **The Resupply Trip:** The group insists on returning to Hradek to resupply, primarily wanting beer—partly out of stubbornness and partly to use as a bribe for the bandits (with Laszlo arguing one keg will suffice). As they depart, Hradek, Laszlo notes that they could lend their support if the party actually have a decent plan. Brown Leaf tells them it takes a day. They make the forced march to arrive next morning.

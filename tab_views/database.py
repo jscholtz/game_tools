@@ -31,7 +31,7 @@ def get_users() -> dict[str, dict[str, Any]]:
 
 
 def load_private_data(username: str) -> dict[str, Any]:
-    document = get_database()["personal_data"].find_one({"_id": username})
+    document = get_database()["private_data"].find_one({"_id": username})
     if document is None:
         raise FileNotFoundError(f"No private data found for {username}.")
     document.pop("_id", None)
@@ -40,7 +40,7 @@ def load_private_data(username: str) -> dict[str, Any]:
 
 def save_private_data(username: str, data: dict[str, Any]) -> None:
     fields = {key: value for key, value in data.items() if key != "_id"}
-    result = get_database()["personal_data"].update_one(
+    result = get_database()["private_data"].update_one(
         {"_id": username},
         {"$set": fields},
     )

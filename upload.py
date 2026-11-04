@@ -130,7 +130,7 @@ def upload() -> None:
         upsert_documents(database["chats"], list(chat_messages.values()))
         upsert_documents(database["initiative"], initiative_documents)
                 
-        upsert_documents(database["personal_data"], private_data)
+        upsert_documents(database["private_data"], private_data)
         upsert_documents(database["public_data"], public_documents)
         upsert_documents(database["logins"], logins)
         

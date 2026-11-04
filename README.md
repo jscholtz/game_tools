@@ -16,5 +16,5 @@ Then start Streamlit:
 uv run streamlit run main.py
 ```
 
-The app uses the `logins`, `personal_data`, `chats`, `initiative`, and
+The app uses the `logins`, `private_data`, `chats`, `initiative`, and
 `public_data` collections.

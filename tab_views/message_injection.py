@@ -1,11 +1,13 @@
 import streamlit as st
 from typesafe_sdk import Noul, TypeSafeClient
 
+from .config import get_required_env
+
 
 class MessageInjectionChecker:
     def __init__(self) -> None:
         self.client = TypeSafeClient(
-            api_key=st.secrets["tokens"]["jev"]["jev_token"],
+            api_key=get_required_env("JEV_TOKEN"),
             model="jev-latest",
         )
 

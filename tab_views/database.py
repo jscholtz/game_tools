@@ -1,17 +1,16 @@
-import os
 from typing import Any
 
 import streamlit as st
 from pymongo import MongoClient
+
+from .config import get_required_env
 
 DATABASE_NAME = "game_helper"
 
 
 @st.cache_resource
 def get_mongodb_client() -> MongoClient:
-    uri = os.environ.get("MONGODB_URI")
-    if not uri:
-        uri = st.secrets["tokens"]["mongodb"]["mongo_db_login"]
+    uri = get_required_env("MONGODB_URI")
     client = MongoClient(uri, serverSelectionTimeoutMS=10_000)
     client.admin.command("ping")
     return client

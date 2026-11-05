@@ -11,3 +11,4 @@ wheels/
 
 # Local Streamlit credentials
 .streamlit/secrets.toml
+.env

@@ -1,33 +1,21 @@
 import hashlib
 import json
 import mimetypes
-import os
-import tomllib
 from pathlib import Path
 from typing import Any
 
 from pymongo import MongoClient
 
+from tab_views.config import get_required_env
+
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / "data"
 PUBLIC_DATA_DIR = ROOT / "public_data"
-SECRETS_FILE = ROOT / ".streamlit" / "secrets.toml"
 DATABASE_NAME = "game_helper"
 
 
 def get_mongodb_uri() -> str:
-    uri = os.environ.get("MONGODB_URI")
-    if uri:
-        return uri
-
-    with SECRETS_FILE.open("rb") as secrets_file:
-        secrets = tomllib.load(secrets_file)
-    try:
-        return secrets["tokens"]["mongodb"]["mongo_db_login"]
-    except KeyError as error:
-        raise RuntimeError(
-            "Set MONGODB_URI or tokens.mongodb.mongo_db_login in .streamlit/secrets.toml."
-        ) from error
+    return get_required_env("MONGODB_URI")
 
 
 def load_json(path: Path) -> dict[str, Any]:

@@ -124,21 +124,16 @@ def render_initiative_tab() -> None:
     st.markdown(
         """
         <style>
-        .st-key-initiative-add button {
-            background-color: #238636;
-            border-color: #238636;
-            color: white;
-        }
-        [class*="st-key-initiative-next-turn-"] button {
-            background-color: #163f70;
-            border-color: #3b82f6;
-            color: white;
-        }
         [class*="st-key-current-combatant-"] {
-            background-color: #163f70;
-            border: 2px solid #3b82f6;
+            background-color: #f1e6c9;
+            border: 2px solid #7a3428;
             border-radius: 0.75rem;
             padding: 1rem;
+            color: #292722;
+        }
+        [class*="st-key-current-combatant-"] [data-testid="stMarkdownContainer"],
+        [class*="st-key-current-combatant-"] [data-testid="stMarkdownContainer"] * {
+            color: #292722;
         }
         </style>
         """,

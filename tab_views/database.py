@@ -130,22 +130,47 @@ def save_tracker(tracker: dict[str, Any]) -> None:
     )
 
 
-def load_chat_messages(username: str, is_dm: bool, conversation_partner: str) -> list[dict[str, Any]]:
+def load_chat_messages(username: str, conversation_partner: str) -> list[dict[str, Any]]:
     collection = get_database()["chats"]
-    query = (
-        {}
-        if is_dm
-        else {
-            "$or": [
-                {"sender": username, "recipient": conversation_partner},
-                {"sender": conversation_partner, "recipient": username},
-            ]
-        }
-    )
+    query = {
+        "$or": [
+            {"sender": username, "recipient": conversation_partner},
+            {"sender": conversation_partner, "recipient": username},
+        ]
+    }
     messages = list(collection.find(query, {"_id": 0}))
     messages.sort(key=lambda message: message.get("timestamp", ""))
     return messages
 
 
-def save_chat_message(message: dict[str, str]) -> None:
+def load_dm_unread_counts(player_names: list[str]) -> dict[str, int]:
+    if not player_names:
+        return {}
+    rows = get_database()["chats"].aggregate(
+        [
+            {
+                "$match": {
+                    "recipient": "dm",
+                    "sender": {"$in": player_names},
+                    "dm_read": {"$ne": True},
+                }
+            },
+            {"$group": {"_id": "$sender", "count": {"$sum": 1}}},
+        ]
+    )
+    return {row["_id"]: row["count"] for row in rows}
+
+
+def mark_dm_messages_read(player_name: str) -> None:
+    get_database()["chats"].update_many(
+        {
+            "sender": player_name,
+            "recipient": "dm",
+            "dm_read": {"$ne": True},
+        },
+        {"$set": {"dm_read": True}},
+    )
+
+
+def save_chat_message(message: dict[str, Any]) -> None:
     get_database()["chats"].insert_one(message)

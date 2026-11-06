@@ -1142,7 +1142,7 @@ dependencies = [
 requires-dist = [
     { name = "pymongo", specifier = ">=4.19.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "streamlit", specifier = ">=1.39.0" },
+    { name = "streamlit", specifier = ">=1.46.0" },
     { name = "typesafe-sdk", specifier = ">=0.7.5" },
 ]
 

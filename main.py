@@ -77,9 +77,7 @@ def main():
     tab_names = ["Character"]
     if user_details["role"] == "player":
         tab_names.append("Notes")
-    tab_names.extend(["Public Board", "Messages with DM"])
-    if user_details["role"] == "dm":
-        tab_names.append("Initiative Tracker")
+    tab_names.extend(["Public Board", "Messages with DM", "Initiative Tracker"])
     tabs = iter(st.tabs(tab_names))
 
     with next(tabs):
@@ -99,9 +97,8 @@ def main():
             users,
         )
 
-    if user_details["role"] == "dm":
-        with next(tabs):
-            render_initiative_tab()
+    with next(tabs):
+        render_initiative_tab(is_dm=user_details["role"] == "dm")
 
     if st.sidebar.button("Log out"):
         st.session_state.logged_in_user = None

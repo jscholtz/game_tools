@@ -199,42 +199,42 @@ def render_initiative_tab(is_dm: bool = True) -> None:
         st.caption("No combatants yet.")
 
     if is_dm:
-        next_turn_column, reorder_column, reset_column, snapshot_column = st.columns(4)
         living_combatants = [actor for actor in combatants if not actor["dead"]]
-        with next_turn_column.container(key="initiative-next-turn"):
-            if st.button("Next turn", disabled=not living_combatants, type="primary"):
-                current_index = next(
-                    (
-                        index for index, actor in enumerate(living_combatants)
-                        if actor["id"] == current_turn_id
-                    ),
-                    -1,
-                )
-                next_actor = living_combatants[(current_index + 1) % len(living_combatants)]
-                tracker["current_turn_id"] = next_actor["id"]
+        with st.container(horizontal=True):
+            with st.container(key="initiative-next-turn", width="content"):
+                if st.button("Next turn", disabled=not living_combatants, type="primary"):
+                    current_index = next(
+                        (
+                            index for index, actor in enumerate(living_combatants)
+                            if actor["id"] == current_turn_id
+                        ),
+                        -1,
+                    )
+                    next_actor = living_combatants[(current_index + 1) % len(living_combatants)]
+                    tracker["current_turn_id"] = next_actor["id"]
+                    try:
+                        persist_tracker_async(tracker)
+                    except (KeyError, PyMongoError, RedisError, RuntimeError, ValueError) as error:
+                        st.error(f"Could not advance initiative: {error}")
+                    else:
+                        st.rerun(scope="fragment")
+
+            with st.container(key="initiative-reorder", width="content"):
+                reorder = st.button("Reorder by initiative", disabled=not combatants)
+
+            if st.button("Reset to default"):
+                confirm_reset_tracker()
+
+            if st.button("Save snapshot", help="Save current tracker state to MongoDB"):
                 try:
-                    persist_tracker_async(tracker)
-                except (KeyError, PyMongoError, RedisError, RuntimeError, ValueError) as error:
-                    st.error(f"Could not advance initiative: {error}")
+                    persist_tracker(tracker)
+                    save_tracker_snapshot(tracker)
+                except (KeyError, PyMongoError, RedisError, ValueError) as error:
+                    st.error(f"Could not save tracker snapshot to MongoDB: {error}")
                 else:
-                    st.rerun(scope="fragment")
-
-        with reorder_column.container(key="initiative-reorder"):
-            reorder = st.button("Reorder by initiative", disabled=not combatants)
-
-        if reset_column.button("Reset to default"):
-            confirm_reset_tracker()
-
-        if snapshot_column.button("Save snapshot", help="Save current tracker state to MongoDB"):
-            try:
-                persist_tracker(tracker)
-                save_tracker_snapshot(tracker)
-            except (KeyError, PyMongoError, RedisError, ValueError) as error:
-                st.error(f"Could not save tracker snapshot to MongoDB: {error}")
-            else:
-                st.session_state[TRACKER_SNAPSHOT_TIME_KEY] = datetime.now(
-                    timezone.utc
-                ).strftime("%Y-%m-%d %H:%M:%S")
+                    st.session_state[TRACKER_SNAPSHOT_TIME_KEY] = datetime.now(
+                        timezone.utc
+                    ).strftime("%Y-%m-%d %H:%M:%S")
 
         if reorder:
             combatants.sort(key=lambda actor: actor["initiative"], reverse=True)
@@ -258,13 +258,8 @@ def render_initiative_tab(is_dm: bool = True) -> None:
                     name_column,
                     initiative_column,
                     hp_value_column,
-                    hp_save_column,
-                    initiative_edit_column,
-                    dead_column,
-                    delete_column,
-                ) = st.columns(
-                    [4, 1.2, 1, 0.5, 0.5, 0.5, 0.5]
-                )
+                    buttons_column,
+                ) = st.columns([4, 1.2, 1, 2])
                 name_column.markdown(
                     f"**{actor['name']}** (max hitpoints: {actor['max_hp']})"
                     + (" — DEAD" if actor["dead"] else "")
@@ -282,40 +277,41 @@ def render_initiative_tab(is_dm: bool = True) -> None:
                     key=hp_key,
                     label_visibility="collapsed",
                 )
-                if hp_save_column.button(
-                    "❤️", help="Save hit points", key=f"hp_save_{actor['id']}"
-                ):
-                    save_combatant_hp(actor["id"], st.session_state[hp_key])
+                with buttons_column.container(horizontal=True, gap="small"):
+                    if st.button(
+                        "❤️", help="Save hit points", key=f"hp_save_{actor['id']}"
+                    ):
+                        save_combatant_hp(actor["id"], st.session_state[hp_key])
 
-                if initiative_edit_column.button("🎲", help="Change initiative", key=f"change_{actor['id']}"):
-                    edit_initiative(actor["id"])
+                    if st.button("🎲", help="Change initiative", key=f"change_{actor['id']}"):
+                        edit_initiative(actor["id"])
 
-                if dead_column.button(
-                    "💀",
-                    help="Revive" if actor["dead"] else "Make dead",
-                    key=f"dead_{actor['id']}",
-                ):
-                    actor["dead"] = not actor["dead"]
-                    if actor["dead"] and current_turn_id == actor["id"]:
-                        tracker["current_turn_id"] = None
-                    try:
-                        persist_tracker(tracker)
-                    except (KeyError, PyMongoError, RedisError, ValueError) as error:
-                        st.error(f"Could not update combatant status: {error}")
-                    else:
-                        st.rerun(scope="fragment")
-
-                with delete_column.container(key=f"initiative-delete-{actor['id']}"):
-                    if st.button("❌", help="Delete", key=f"delete_{actor['id']}"):
-                        combatants.remove(actor)
-                        if current_turn_id == actor["id"]:
+                    if st.button(
+                        "💀",
+                        help="Revive" if actor["dead"] else "Make dead",
+                        key=f"dead_{actor['id']}",
+                    ):
+                        actor["dead"] = not actor["dead"]
+                        if actor["dead"] and current_turn_id == actor["id"]:
                             tracker["current_turn_id"] = None
                         try:
                             persist_tracker(tracker)
                         except (KeyError, PyMongoError, RedisError, ValueError) as error:
-                            st.error(f"Could not delete combatant: {error}")
+                            st.error(f"Could not update combatant status: {error}")
                         else:
                             st.rerun(scope="fragment")
+
+                    with st.container(key=f"initiative-delete-{actor['id']}", width="content"):
+                        if st.button("❌", help="Delete", key=f"delete_{actor['id']}"):
+                            combatants.remove(actor)
+                            if current_turn_id == actor["id"]:
+                                tracker["current_turn_id"] = None
+                            try:
+                                persist_tracker(tracker)
+                            except (KeyError, PyMongoError, RedisError, ValueError) as error:
+                                st.error(f"Could not delete combatant: {error}")
+                            else:
+                                st.rerun(scope="fragment")
             else:
                 name_column, initiative_column = st.columns([4, 1.2])
                 name_column.markdown(

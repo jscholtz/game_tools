@@ -22,7 +22,12 @@ def main():
     if "logged_in_user" not in st.session_state:
         st.session_state.logged_in_user = None
 
-    page_layout = "wide" if st.session_state.get("logged_in_role") == "dm" else "centered"
+    page_layout = (
+        "wide"
+        if st.session_state.get("logged_in_role") == "dm"
+        or st.session_state.get("main_tabs") == "Notes"
+        else "centered"
+    )
     st.set_page_config(
         page_title="D&D Campaign Portal",
         page_icon="🐉",
@@ -78,7 +83,7 @@ def main():
     if user_details["role"] == "player":
         tab_names.append("Notes")
     tab_names.extend(["Public Board", "Messages with DM", "Initiative Tracker"])
-    tabs = iter(st.tabs(tab_names))
+    tabs = iter(st.tabs(tab_names, key="main_tabs", on_change="rerun"))
 
     with next(tabs):
         render_character_tab(username)

@@ -22,9 +22,12 @@ CARD_STATS = (
     ("armor_class", "Armor class"),
     ("max_hp", "Maximum HP"),
 )
-CARD_LINKS = (
-    ("class_url", "Class"),
-    ("subclass_url", "Subclass"),
+CLASS_FIELDS = (
+    ("class_name", "Class"),
+    ("class_url", "Class URL"),
+    ("subclass_name", "Subclass"),
+    ("subclass_url", "Subclass URL"),
+    ("levels", "Levels"),
 )
 PLAYER_TEXT_FIELDS = (
     ("background", "Character background"),
@@ -63,41 +66,56 @@ def _render_portrait(data: dict) -> None:
             st.error("Character picture must be non-empty binary data.")
 
 
+def _character_classes(data: dict) -> list[dict[str, str]]:
+    classes = data.get("classes", [])
+    if not isinstance(classes, list):
+        raise ValueError("Character classes must be a list.")
+    expected = {field for field, _ in CLASS_FIELDS}
+    if any(
+        not isinstance(entry, dict)
+        or set(entry) != expected
+        or any(not isinstance(entry[field], str) for field, _ in CLASS_FIELDS)
+        for entry in classes
+    ):
+        raise ValueError("Each character class must contain the five text fields.")
+    return classes
+
+
 def _render_character_details(data: dict) -> None:
     parts = []
-    if data.get("level") is not None:
-        parts.append(escape(f"Level {data['level']}"))
     if data.get("race"):
         parts.append(escape(str(data["race"])))
 
-    raw_class = data.get("class", "")
-    raw_subclass = data.get("subclass", "")
-    if not isinstance(raw_class, str) or not isinstance(raw_subclass, str):
-        st.error("Class and subclass must be text.")
+    try:
+        classes = _character_classes(data)
+    except ValueError as error:
+        st.error(f"Could not display character classes: {error}")
         return
-    class_name, separator, legacy_subclass = raw_class.partition(",")
-    class_name = class_name.strip()
-    subclass_name = raw_subclass.strip() or (legacy_subclass.strip() if separator else "")
-
     class_parts = []
-    for label, name, url_field in (
-        ("Class", class_name, "class_url"),
-        ("Subclass", subclass_name, "subclass_url"),
-    ):
-        url = data.get(url_field)
-        if url and (not isinstance(url, str) or not _valid_website_url(url)):
-            st.error(f"{label} website URL is invalid.")
-            url = None
-        if name or url:
-            text = escape(name or f"{label} reference")
-            if url:
-                text = (
-                    f'<a href="{escape(url, quote=True)}" '
-                    f'target="_blank" rel="noopener noreferrer">{text}</a>'
-                )
-            class_parts.append(text)
+    for entry in classes:
+        labels = []
+        for label, name_field, url_field in (
+            ("Class", "class_name", "class_url"),
+            ("Subclass", "subclass_name", "subclass_url"),
+        ):
+            name, url = entry[name_field], entry[url_field]
+            if url and not _valid_website_url(url):
+                st.error(f"{label} website URL is invalid.")
+                url = ""
+            if name or url:
+                text = escape(name or f"{label} reference")
+                if url:
+                    text = (
+                        f'<a href="{escape(url, quote=True)}" '
+                        f'target="_blank" rel="noopener noreferrer">{text}</a>'
+                    )
+                labels.append(text)
+        if entry["levels"]:
+            labels.append(f"Level {escape(entry['levels'])}")
+        if labels:
+            class_parts.append(", ".join(labels))
     if class_parts:
-        parts.append(", ".join(class_parts))
+        parts.append(" / ".join(class_parts))
     if parts:
         st.html(f"<strong>{' '.join(parts)}</strong>")
 
@@ -121,11 +139,30 @@ def _edit_character_card(username: str, *, is_dm: bool) -> None:
         return
 
     character_name = data.get("character", "")
-    text_fields = CARD_LINKS if is_dm else CARD_LINKS + PLAYER_TEXT_FIELDS
-    if not isinstance(character_name, str) or any(
-        not isinstance(data.get(field, ""), str) for field, _ in text_fields
+    if not isinstance(character_name, str) or (
+        not is_dm
+        and any(not isinstance(data.get(field, ""), str) for field, _ in PLAYER_TEXT_FIELDS)
     ):
-        st.error("Character name, website URLs, background, and story must be text.")
+        st.error("Character name, background, and story must be text.")
+        if st.button("Back to characters"):
+            st.session_state.pop(edit_key, None)
+            st.rerun()
+        return
+
+    initiative_bonus = data.get("initiative_bonus", 0)
+    if not is_dm and (
+        not isinstance(initiative_bonus, int) or isinstance(initiative_bonus, bool)
+    ):
+        st.error("Initiative bonus must be a whole number.")
+        if st.button("Back to characters"):
+            st.session_state.pop(edit_key, None)
+            st.rerun()
+        return
+
+    try:
+        classes = _character_classes(data)
+    except ValueError as error:
+        st.error(f"Could not edit character classes: {error}")
         if st.button("Back to characters"):
             st.session_state.pop(edit_key, None)
             st.rerun()
@@ -142,10 +179,22 @@ def _edit_character_card(username: str, *, is_dm: bool) -> None:
             )
             for field, label in CARD_STATS
         }
-        urls = {
-            field: st.text_input(f"{label} website URL", value=data.get(field, ""))
-            for field, label in CARD_LINKS
+        if not is_dm:
+            initiative_input = st.text_input("Initiative bonus", value=f"{initiative_bonus:+}")
+        st.write("Classes")
+        class_columns = {
+            field: [entry[field] for entry in classes] or [""]
+            for field, _ in CLASS_FIELDS
         }
+        edited_classes = st.data_editor(
+            class_columns,
+            column_config={
+                field: st.column_config.TextColumn(label) for field, label in CLASS_FIELDS
+            },
+            num_rows="dynamic",
+            hide_index=True,
+            key=f"character_classes_{username}",
+        )
         player_text = {}
         if not is_dm:
             player_text = {
@@ -182,15 +231,55 @@ def _edit_character_card(username: str, *, is_dm: bool) -> None:
             st.error(f"{label} is too large.")
             return
         fields[field] = number
-    for field, label in CARD_LINKS:
-        url = urls[field].strip()
-        if url and not _valid_website_url(url):
-            st.error(f"{label} website must be a valid HTTP or HTTPS URL.")
+    if not is_dm:
+        bonus = initiative_input.strip()
+        digits = bonus.removeprefix("+").removeprefix("-")
+        if (
+            not digits
+            or not digits.isascii()
+            or not digits.isdecimal()
+            or bonus not in (digits, f"+{digits}", f"-{digits}")
+        ):
+            st.error("Initiative bonus must be a whole number.")
             return
-        if url:
-            fields[field] = url
-        else:
-            removed.append(field)
+        if len(digits.lstrip("0")) > 10:
+            st.error("Initiative bonus is too large.")
+            return
+        number = int(digits.lstrip("0") or "0")
+        if bonus.startswith("-"):
+            number = -number
+        if not -(2**31) <= number <= 2**31 - 1:
+            st.error("Initiative bonus is too large.")
+            return
+        fields["initiative_bonus"] = number
+    updated_classes = []
+    for row in zip(*(edited_classes[field] for field, _ in CLASS_FIELDS), strict=True):
+        if any(value is not None and not isinstance(value, str) for value in row):
+            st.error("Class fields must contain text.")
+            return
+        entry = {
+            field: value.strip() if value is not None else ""
+            for (field, _), value in zip(CLASS_FIELDS, row, strict=True)
+        }
+        if not any(entry.values()):
+            continue
+        if not entry["class_name"]:
+            st.error("Each class must have a name.")
+            return
+        for field, label in (("class_url", "Class"), ("subclass_url", "Subclass")):
+            if entry[field] and not _valid_website_url(entry[field]):
+                st.error(f"{label} website must be a valid HTTP or HTTPS URL.")
+                return
+        levels = entry["levels"]
+        if levels and (
+            not levels.isascii()
+            or not levels.isdecimal()
+            or not levels.strip("0")
+        ):
+            st.error("Class levels must be a positive whole number or blank.")
+            return
+        updated_classes.append(entry)
+    fields["classes"] = updated_classes
     if not is_dm:
         fields.update(player_text)
     if portrait is not None:
@@ -308,8 +397,11 @@ def render_character_tab(username: str):
                 for field, label in CARD_STATS:
                     value = _stat_value(user_data, field)
                     stats.append((label, value if value is not None else "Not set"))
-                if "insight" in user_data:
-                    stats.append(("Insight", f"{user_data['insight']:+}"))
+                initiative_bonus = user_data.get("initiative_bonus", 0)
+                if isinstance(initiative_bonus, int) and not isinstance(initiative_bonus, bool):
+                    stats.append(("Initiative bonus", f"{initiative_bonus:+}"))
+                else:
+                    st.error("Initiative bonus must be a whole number.")
                 for start in range(0, len(stats), 2):
                     row = stats[start : start + 2]
                     stat_columns = st.columns(len(row))

@@ -66,8 +66,14 @@ def _render_note(username: str, note: dict, is_draft: bool) -> None:
     editing = is_draft or note_id in st.session_state[EDITING_KEY]
     changed = False
 
-    with st.container(border=True):
-        with st.container(horizontal=True):
+    text = st.session_state.get(_text_key(note_id), note.get("text", ""))
+    first_line = text.split("\n", 1)[0].strip() or "Untitled note"
+    date = datetime.now(LOCAL_TZ) if is_draft else _local_datetime(note)
+    header = f"{date.strftime('%d %B %Y')} — {first_line}"
+
+    with st.expander(header, expanded=editing):
+        text_column, buttons_column = st.columns([4, 1])
+        with buttons_column, st.container(horizontal=True, horizontal_alignment="right"):
             if editing:
                 if st.button("Save", key=f"save_{note_id}"):
                     if _save(username, note_id):
@@ -89,20 +95,21 @@ def _render_note(username: str, note: dict, is_draft: bool) -> None:
                     _stop_editing(note_id)
                     changed = True
 
-        if editing:
-            if _text_key(note_id) not in st.session_state:
-                st.session_state[_text_key(note_id)] = note.get("text", "")
-            st.text_area(
-                "Note",
-                key=_text_key(note_id),
-                height=200,
-                label_visibility="collapsed",
-            )
-        else:
-            st.markdown(note.get("text", ""))
+        if changed:
+            st.rerun()
 
-    if changed:
-        st.rerun()
+        with text_column:
+            if editing:
+                if _text_key(note_id) not in st.session_state:
+                    st.session_state[_text_key(note_id)] = note.get("text", "")
+                st.text_area(
+                    "Note",
+                    key=_text_key(note_id),
+                    height=200,
+                    label_visibility="collapsed",
+                )
+            else:
+                st.markdown(note.get("text", ""))
 
 
 def render_notes_tab(username: str):

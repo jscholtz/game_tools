@@ -1,11 +1,23 @@
-from typing import Any
+import base64
+import binascii
+from typing import Any, TypedDict
+from uuid import uuid4
 
 import streamlit as st
 from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError
 
 from .config import get_required_env
 
 DATABASE_NAME = "game_helper"
+
+
+class PublicNote(TypedDict):
+    header: str
+    date: str
+    text: str
+    visible: bool
+    images: list[str]
 
 
 @st.cache_resource
@@ -70,12 +82,92 @@ def load_publication_settings() -> dict[str, bool]:
     return settings
 
 
-def save_publication_settings(settings: dict[str, bool]) -> None:
-    get_database()["public_data"].replace_one(
-        {"_id": "publication_settings"},
-        {"_id": "publication_settings", "name": "publication_settings", "sections": settings},
-        upsert=True,
+def load_public_board() -> tuple[str, dict[str, bool] | None, dict[str, bool]]:
+    document = get_database()["public_data"].find_one({"_id": "public.md"})
+    if document is None:
+        raise FileNotFoundError("No public data found for public.md.")
+    content = document.get("content")
+    if not isinstance(content, str):
+        raise ValueError("Public board content must be text.")
+    settings = document.get("sections")
+    if "sections" in document and (
+        not isinstance(settings, dict)
+        or not all(isinstance(key, str) and isinstance(value, bool) for key, value in settings.items())
+    ):
+        raise ValueError("Public board settings must map section names to true/false.")
+    return content, settings, settings if settings is not None else load_publication_settings()
+
+
+def load_public_notes() -> tuple[list[PublicNote], str] | None:
+    document = get_database()["public_data"].find_one({"_id": "public_notes"})
+    if document is None:
+        return None
+    notes = document.get("notes")
+    revision = document.get("revision")
+    if not isinstance(notes, list) or not isinstance(revision, str):
+        raise ValueError("Public notes must contain a list and a revision.")
+    for note in notes:
+        if (
+            not isinstance(note, dict)
+            or set(note) != {"header", "date", "text", "visible", "images"}
+            or not all(isinstance(note[field], str) for field in ("header", "date", "text"))
+            or not isinstance(note["visible"], bool)
+            or not isinstance(note["images"], list)
+            or not all(isinstance(image, str) for image in note["images"])
+        ):
+            raise ValueError("Invalid public note data.")
+        for image in note["images"]:
+            if image.startswith("image:") and len(image) > len("image:"):
+                continue
+            try:
+                base64.b64decode(image, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise ValueError("Invalid public note image encoding.") from error
+    return notes, revision
+
+
+def save_public_image(name: str, content: bytes) -> str:
+    if not name or not content:
+        raise ValueError("Image name and content must not be empty.")
+    image_id = uuid4().hex
+    get_database()["public_data"].insert_one(
+        {"_id": f"public_image:{image_id}", "name": name, "content": content}
     )
+    return f"image:{image_id}"
+
+
+def load_public_image(reference: str) -> tuple[str, bytes]:
+    if not reference.startswith("image:") or len(reference) == len("image:"):
+        raise ValueError("Invalid image reference.")
+    image_id = reference[len("image:"):]
+    image = get_database()["public_data"].find_one({"_id": f"public_image:{image_id}"})
+    if image is None:
+        image = get_database()["public_images"].find_one({"_id": image_id})
+    if image is None:
+        raise FileNotFoundError(f"Image {reference} not found.")
+    name = image.get("name")
+    content = image.get("content")
+    if not isinstance(name, str) or not name or not isinstance(content, bytes) or not content:
+        raise ValueError(f"Invalid stored image {reference}.")
+    return name, content
+
+
+def create_public_notes(notes: list[PublicNote]) -> bool:
+    try:
+        get_database()["public_data"].insert_one(
+            {"_id": "public_notes", "notes": notes, "revision": uuid4().hex}
+        )
+    except DuplicateKeyError:
+        return False
+    return True
+
+
+def save_public_notes(notes: list[PublicNote], revision: str) -> bool:
+    result = get_database()["public_data"].update_one(
+        {"_id": "public_notes", "revision": revision},
+        {"$set": {"notes": notes, "revision": uuid4().hex}},
+    )
+    return result.matched_count == 1
 
 
 def load_chat_messages(username: str, conversation_partner: str) -> list[dict[str, Any]]:

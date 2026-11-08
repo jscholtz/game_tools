@@ -27,13 +27,19 @@ websites, and picture. Unknown stats can remain blank. If passive insight is not
 the card derives it as 10 plus the existing Insight modifier when available.
 Values and the uploaded picture are stored in the player's `private_data`
 document. A picture shares the MongoDB 16 MiB document limit with that player's
-other private data. Class and subclass names link to their reference sites when
-URLs are available; links must use HTTP or HTTPS. Legacy class values containing
-a comma are displayed as class and subclass when no separate subclass is set.
+other private data. A character's `classes` field is an ordered list of objects
+with string fields `class_name`, `class_url`, `subclass_name`, `subclass_url`,
+and `levels`. Players and the DM can add or remove classes in the character
+editor; levels may be blank or a positive whole number. Class and subclass names
+link to their reference sites when URLs are available; links must use HTTP or
+HTTPS. Only `classes` entries are displayed; existing single-class fields are
+not read. Characters without `classes` start with an empty class editor.
 Players can view and edit their own character name, portrait, tracked stats,
 class and subclass links, background, and story on their Character tab. The DM
 can edit the shared details but does not see the background or story in the DM
-view. Background and story are stored in the player's `private_data` document.
+view. The player view shows an editable initiative bonus, defaulting to +0 when
+not stored. Background, story, and initiative bonus are stored in the player's
+`private_data` document.
 
 The Public Board stores an ordered `notes` list in the `public_data` document
 `public_notes`. Each note contains `header`, `date`, `text`, `visible`, and

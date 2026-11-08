@@ -62,17 +62,13 @@ def save_private_data(username: str, data: dict[str, Any]) -> None:
 def load_character_cards(player_names: list[str]) -> dict[str, dict[str, Any]]:
     fields = {
         "character": 1,
-        "level": 1,
         "race": 1,
-        "class": 1,
-        "subclass": 1,
         "passive_perception": 1,
         "passive_insight": 1,
         "insight": 1,
         "armor_class": 1,
         "max_hp": 1,
-        "class_url": 1,
-        "subclass_url": 1,
+        "classes": 1,
         "portrait": 1,
     }
     return {

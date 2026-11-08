@@ -59,6 +59,41 @@ def save_private_data(username: str, data: dict[str, Any]) -> None:
         raise FileNotFoundError(f"No private data found for {username}.")
 
 
+def load_character_cards(player_names: list[str]) -> dict[str, dict[str, Any]]:
+    fields = {
+        "character": 1,
+        "level": 1,
+        "race": 1,
+        "class": 1,
+        "subclass": 1,
+        "passive_perception": 1,
+        "passive_insight": 1,
+        "insight": 1,
+        "armor_class": 1,
+        "max_hp": 1,
+        "class_url": 1,
+        "subclass_url": 1,
+        "portrait": 1,
+    }
+    return {
+        document["_id"]: document
+        for document in get_database()["private_data"].find(
+            {"_id": {"$in": player_names}}, fields
+        )
+    }
+
+
+def save_character_card(
+    username: str, fields: dict[str, Any], removed_fields: list[str]
+) -> None:
+    update: dict[str, Any] = {"$set": fields}
+    if removed_fields:
+        update["$unset"] = {field: "" for field in removed_fields}
+    result = get_database()["private_data"].update_one({"_id": username}, update)
+    if result.matched_count == 0:
+        raise FileNotFoundError(f"User data not found for {username}.")
+
+
 def load_public_file(filename: str) -> str | bytes:
     document = get_database()["public_data"].find_one({"_id": filename})
     if document is None:

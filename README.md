@@ -15,6 +15,26 @@ MongoDB's `initiative` collection as a recovery snapshot; this preserves the
 configured default tracker. If Redis loses its state, the saved snapshot is
 used to initialize it.
 
+The DM's Character tab shows cards for the player login names listed in
+`character_cards.toml`, in the configured order. Names are matched
+case-insensitively; missing or ambiguous accounts are reported. The file is
+loaded into Streamlit session state once per session, so start a new session
+after editing it. This selection affects only character cards, not chat access.
+Each card shows the character name, the player login in smaller text, and a
+bell when that player has unread messages. The DM can edit each character's name,
+passive perception, passive insight, armor class, maximum HP, class and subclass
+websites, and picture. Unknown stats can remain blank. If passive insight is not stored,
+the card derives it as 10 plus the existing Insight modifier when available.
+Values and the uploaded picture are stored in the player's `private_data`
+document. A picture shares the MongoDB 16 MiB document limit with that player's
+other private data. Class and subclass names link to their reference sites when
+URLs are available; links must use HTTP or HTTPS. Legacy class values containing
+a comma are displayed as class and subclass when no separate subclass is set.
+Players can view and edit their own character name, portrait, tracked stats,
+class and subclass links, background, and story on their Character tab. The DM
+can edit the shared details but does not see the background or story in the DM
+view. Background and story are stored in the player's `private_data` document.
+
 The Public Board stores an ordered `notes` list in the `public_data` document
 `public_notes`. Each note contains `header`, `date`, `text`, `visible`, and
 `images`; images are references to separate `public_image:<id>` documents in

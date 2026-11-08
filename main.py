@@ -3,7 +3,7 @@ import hashlib
 import streamlit as st
 from pymongo.errors import PyMongoError
 
-from tab_views.character import render_character_tab
+from tab_views.character import render_character_tab, render_dm_character_tab
 from tab_views.database import get_users
 from tab_views.initiative import render_initiative_tab
 from tab_views.messages import render_messages_tab
@@ -86,7 +86,12 @@ def main():
     tabs = iter(st.tabs(tab_names, key="main_tabs", on_change="rerun"))
 
     with next(tabs):
-        render_character_tab(username)
+        if user_details["role"] == "dm":
+            render_dm_character_tab(
+                [name for name, details in users.items() if details["role"] == "player"]
+            )
+        else:
+            render_character_tab(username)
 
     if user_details["role"] == "player":
         with next(tabs):

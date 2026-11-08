@@ -41,13 +41,12 @@ def save_user_note(username: str, note_id: str, text: str) -> None:
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }
         )
-    user_data["notes"] = notes
-    save_private_data(username, user_data)
+    save_private_data(username, {"notes": notes})
 
 
 def delete_user_note(username: str, note_id: str) -> None:
     user_data = load_private_data(username)
-    user_data["notes"] = [
+    notes = [
         note for note in _notes_from(user_data) if note["id"] != note_id
     ]
-    save_private_data(username, user_data)
+    save_private_data(username, {"notes": notes})

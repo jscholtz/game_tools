@@ -1,5 +1,6 @@
 from datetime import datetime
 from html import escape
+from typing import Any, Callable
 
 import streamlit as st
 from pymongo.errors import PyMongoError
@@ -16,7 +17,7 @@ from .user_data import send_message
 
 def format_timestamp(timestamp: str) -> str:
     try:
-        return datetime.fromisoformat(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.fromisoformat(timestamp).strftime("%Y-%m-%d %H:%M")
     except ValueError:
         return timestamp
 
@@ -26,6 +27,32 @@ def format_dm_timestamp(timestamp: str) -> str:
         return datetime.fromisoformat(timestamp).strftime("%d %b · %H:%M")
     except ValueError:
         return timestamp
+
+
+def _render_chat_messages(
+    messages: list[dict[str, Any]],
+    *,
+    timestamp_formatter: Callable[[str], str] = format_timestamp,
+    max_height: int | None = None,
+) -> None:
+    if not messages:
+        st.caption("No messages yet.")
+        return
+
+    rows = []
+    for message in reversed(messages):
+        sender = escape(message["sender"])
+        timestamp = escape(timestamp_formatter(message["timestamp"]))
+        text = escape(message["text"])
+        rows.append(
+            '<div style="padding: 0.25rem 0; overflow-wrap: anywhere;">'
+            '<div style="font-size: 0.8rem; opacity: 0.7;">'
+            f"<strong>{sender}</strong> · {timestamp}</div>"
+            f'<div style="white-space: pre-wrap;">{text}</div>'
+            "</div>"
+        )
+    style = f' style="max-height: {max_height}px; overflow-y: auto;"' if max_height else ""
+    st.html(f"<div{style}>" + "".join(rows) + "</div>")
 
 
 @st.fragment(run_every=5)
@@ -46,13 +73,7 @@ def _show_player_chat(username: str):
             else:
                 st.rerun()
 
-    if not messages:
-        st.caption("No messages yet.")
-    for message in reversed(messages):
-        with st.chat_message(message["sender"]):
-            details = f"{message['sender']} · {format_timestamp(message['timestamp'])}"
-            st.text(details)
-            st.text(message["text"])
+    _render_chat_messages(messages)
 
 
 def _message_is_allowed(message: str) -> bool:
@@ -108,26 +129,7 @@ def _render_dm_conversation(player_name: str, unread_count: int) -> None:
                 else:
                     st.rerun()
 
-        if not messages:
-            st.caption("No messages yet.")
-        else:
-            rows = []
-            for message in reversed(messages):
-                sender = escape(message["sender"])
-                timestamp = escape(format_dm_timestamp(message["timestamp"]))
-                text = escape(message["text"])
-                rows.append(
-                    '<div style="padding: 0.25rem 0; overflow-wrap: anywhere;">'
-                    '<div style="font-size: 0.8rem; opacity: 0.7;">'
-                    f"<strong>{sender}</strong> · {timestamp}</div>"
-                    f'<div style="white-space: pre-wrap;">{text}</div>'
-                    "</div>"
-                )
-            st.html(
-                '<div style="max-height: 320px; overflow-y: auto;">'
-                + "".join(rows)
-                + "</div>"
-            )
+        _render_chat_messages(messages, timestamp_formatter=format_dm_timestamp, max_height=320)
 
 
 @st.fragment(run_every=5)

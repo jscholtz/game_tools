@@ -1,21 +1,25 @@
-from typing import Any, TypedDict
+from typing import Any
 from uuid import uuid4
 
 import streamlit as st
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
+from pydantic import TypeAdapter, ValidationError
 
 from .config import get_required_env
+from .data_models import CharacterData, ChatMessage, PrivateNote, PublicBoard, PublicNote
 
 DATABASE_NAME = "game_helper"
 
 
-class PublicNote(TypedDict):
-    header: str
-    date: str
-    text: str
-    visible: bool
-    images: list[str]
+_private_notes_adapter = TypeAdapter(list[PrivateNote])
+
+
+def _validate_private_notes(data: Any) -> list[PrivateNote]:
+    try:
+        return _private_notes_adapter.validate_python(data, strict=True)
+    except ValidationError as error:
+        raise ValueError("Invalid private notes data; expected a list of note objects.") from error
 
 
 @st.cache_resource
@@ -65,25 +69,32 @@ def get_users() -> dict[str, dict[str, Any]]:
     }
 
 
-def load_private_data(username: str) -> dict[str, Any]:
+def load_private_data(username: str) -> CharacterData:
     document = get_database()["private_data"].find_one({"_id": username})
     if document is None:
         raise FileNotFoundError(f"No private data found for {username}.")
     document.pop("_id", None)
-    return document
+    return CharacterData.model_validate(document)
 
 
-def save_private_data(username: str, data: dict[str, Any]) -> None:
-    fields = {key: value for key, value in data.items() if key != "_id"}
+def load_private_notes(username: str) -> list[PrivateNote]:
+    document = get_database()["private_data"].find_one({"_id": username}, {"notes": 1})
+    if document is None:
+        raise FileNotFoundError(f"No private data found for {username}.")
+    return _validate_private_notes(document.get("notes", []))
+
+
+def save_private_notes(username: str, notes: list[PrivateNote]) -> None:
+    validated = _validate_private_notes([note.model_dump(exclude_unset=True) for note in notes])
     result = get_database()["private_data"].update_one(
         {"_id": username},
-        {"$set": fields},
+        {"$set": {"notes": [note.model_dump(exclude_unset=True) for note in validated]}},
     )
     if result.matched_count == 0:
         raise FileNotFoundError(f"No private data found for {username}.")
 
 
-def load_character_cards(player_names: list[str]) -> dict[str, dict[str, Any]]:
+def load_character_cards(player_names: list[str]) -> dict[str, CharacterData]:
     fields = {
         "character": 1,
         "race": 1,
@@ -95,7 +106,9 @@ def load_character_cards(player_names: list[str]) -> dict[str, dict[str, Any]]:
         "portrait": 1,
     }
     return {
-        document["_id"]: document
+        document["_id"]: CharacterData.model_validate(
+            {key: value for key, value in document.items() if key != "_id"}
+        )
         for document in get_database()["private_data"].find(
             {"_id": {"$in": player_names}}, fields
         )
@@ -105,7 +118,8 @@ def load_character_cards(player_names: list[str]) -> dict[str, dict[str, Any]]:
 def save_character_card(
     username: str, fields: dict[str, Any], removed_fields: list[str]
 ) -> None:
-    update: dict[str, Any] = {"$set": fields}
+    validated = CharacterData.model_validate(fields)
+    update: dict[str, Any] = {"$set": validated.model_dump(exclude_unset=True)}
     if removed_fields:
         update["$unset"] = {field: "" for field in removed_fields}
     result = get_database()["private_data"].update_one({"_id": username}, update)
@@ -117,24 +131,8 @@ def load_public_notes() -> tuple[list[PublicNote], str] | None:
     document = get_database()["public_data"].find_one({"_id": "public_notes"})
     if document is None:
         return None
-    notes = document.get("notes")
-    revision = document.get("revision")
-    if not isinstance(notes, list) or not isinstance(revision, str):
-        raise ValueError("Public notes must contain a list and a revision.")
-    for note in notes:
-        if (
-            not isinstance(note, dict)
-            or set(note) != {"header", "date", "text", "visible", "images"}
-            or not all(isinstance(note[field], str) for field in ("header", "date", "text"))
-            or not isinstance(note["visible"], bool)
-            or not isinstance(note["images"], list)
-            or not all(isinstance(image, str) for image in note["images"])
-        ):
-            raise ValueError("Invalid public note data.")
-        for image in note["images"]:
-            if not image.startswith("image:") or len(image) == len("image:"):
-                raise ValueError("Invalid public note image reference.")
-    return notes, revision
+    board = PublicBoard.model_validate(document)
+    return board.notes, board.revision
 
 
 def save_public_image(name: str, content: bytes) -> str:
@@ -162,9 +160,12 @@ def load_public_image(reference: str) -> tuple[str, bytes]:
 
 
 def create_public_notes(notes: list[PublicNote]) -> bool:
+    board = PublicBoard.model_validate(
+        {"notes": [note.model_dump() for note in notes], "revision": uuid4().hex}
+    )
     try:
         get_database()["public_data"].insert_one(
-            {"_id": "public_notes", "notes": notes, "revision": uuid4().hex}
+            {"_id": "public_notes", **board.model_dump()}
         )
     except DuplicateKeyError:
         return False
@@ -172,14 +173,17 @@ def create_public_notes(notes: list[PublicNote]) -> bool:
 
 
 def save_public_notes(notes: list[PublicNote], revision: str) -> bool:
+    board = PublicBoard.model_validate(
+        {"notes": [note.model_dump() for note in notes], "revision": uuid4().hex}
+    )
     result = get_database()["public_data"].update_one(
         {"_id": "public_notes", "revision": revision},
-        {"$set": {"notes": notes, "revision": uuid4().hex}},
+        {"$set": board.model_dump()},
     )
     return result.matched_count == 1
 
 
-def load_chat_messages(username: str, conversation_partner: str) -> list[dict[str, Any]]:
+def load_chat_messages(username: str, conversation_partner: str) -> list[ChatMessage]:
     collection = get_database()["chats"]
     query = {
         "$or": [
@@ -187,8 +191,8 @@ def load_chat_messages(username: str, conversation_partner: str) -> list[dict[st
             {"sender": conversation_partner, "recipient": username},
         ]
     }
-    messages = list(collection.find(query, {"_id": 0}))
-    messages.sort(key=lambda message: message.get("timestamp", ""))
+    messages = [ChatMessage.model_validate(message) for message in collection.find(query, {"_id": 0})]
+    messages.sort(key=lambda message: message.timestamp)
     return messages
 
 
@@ -221,5 +225,6 @@ def mark_dm_messages_read(player_name: str) -> None:
     )
 
 
-def save_chat_message(message: dict[str, Any]) -> None:
-    get_database()["chats"].insert_one(message)
+def save_chat_message(message: ChatMessage) -> None:
+    validated = ChatMessage.model_validate(message.model_dump(exclude_unset=True))
+    get_database()["chats"].insert_one(validated.model_dump(exclude_unset=True))

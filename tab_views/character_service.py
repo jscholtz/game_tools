@@ -7,6 +7,7 @@ from .database import (
     load_private_data,
     save_character_card,
 )
+from .data_models import CharacterData
 from .principal import Principal
 
 _SHARED_EDIT_FIELDS = {
@@ -28,7 +29,7 @@ def _authorize_character(principal: Principal, username: str) -> None:
             raise PermissionError("The DM can only edit player characters.")
 
 
-def get_character(principal: Principal, username: str) -> dict[str, Any]:
+def get_character(principal: Principal, username: str) -> CharacterData:
     _authorize_character(principal, username)
     if principal.role == "player":
         return load_private_data(username)
@@ -38,7 +39,7 @@ def get_character(principal: Principal, username: str) -> dict[str, Any]:
     return data
 
 
-def get_dm_character_cards(principal: Principal, player_names: list[str]) -> dict[str, dict[str, Any]]:
+def get_dm_character_cards(principal: Principal, player_names: list[str]) -> dict[str, CharacterData]:
     principal.require_dm()
     return load_character_cards(player_names)
 

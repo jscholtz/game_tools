@@ -58,6 +58,12 @@ view. The player view shows an editable initiative bonus, defaulting to +0 when
 not stored. Background, story, and initiative bonus are stored in the player's
 `private_data` document.
 
+Character, private-note, chat message, and public-board data are validated at
+the MongoDB boundary. Private notes must be a list of objects with string
+`id`, `text`, and `created_at` fields; an absent field means no notes. Existing
+string-valued `notes` fields must be migrated to that format before the affected
+players can use their notes. Invalid values are reported and are not overwritten.
+
 The DM-only **Bestiary** searches the `creatures.basic_list` MongoDB collection
 by name, type, challenge rating, size, and source. Filters appear on the left;
 the matching creature selector and stat block appear on the right. Selecting a
@@ -115,3 +121,10 @@ uv run python tests/check_redis.py
 
 This is a live integration check, not an automated test; it requires working
 Redis credentials and writes a unique key that expires after 60 seconds.
+
+## Low-priority TODO
+
+- Replace SHA-256 password hashes with a password-specific scheme or managed
+  authentication, with a migration plan.
+- Revisit the privacy and availability trade-offs of external screening for
+  messages and private notes. External screening is currently intentional.

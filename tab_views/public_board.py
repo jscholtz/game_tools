@@ -14,20 +14,20 @@ from .board_service import (
     get_player_board,
     save_board,
 )
-from .database import PublicNote
+from .data_models import PublicNote
 from .principal import Principal
 
 
 def start_editor(principal: Principal, notes: list[PublicNote], revision: str, index: int | None) -> None:
     principal.require_dm()
-    note: PublicNote = (
-        {
-            "header": "",
-            "date": datetime.now(ZoneInfo("Europe/Amsterdam")).date().isoformat(),
-            "text": "",
-            "visible": False,
-            "images": [],
-        }
+    note = (
+        PublicNote(
+            header="",
+            date=datetime.now(ZoneInfo("Europe/Amsterdam")).date().isoformat(),
+            text="",
+            visible=False,
+            images=[],
+        )
         if index is None
         else notes[index]
     )
@@ -50,12 +50,12 @@ def render_editor(principal: Principal) -> None:
     st.subheader("New public note" if editor["index"] is None else "Edit public note")
     st.caption("Images appear after the note text. New notes are hidden by default.")
     with st.form(f"public_note_form_{key}"):
-        header = st.text_input("Header", value=note["header"])
-        date = st.text_input("Date", value=note["date"], help="Free text, for example 2026-11-08.")
-        text = st.text_area("Markdown", value=note["text"], height=350)
-        visible = st.checkbox("Visible to players", value=note["visible"])
+        header = st.text_input("Header", value=note.header)
+        date = st.text_input("Date", value=note.date, help="Free text, for example 2026-11-08.")
+        text = st.text_area("Markdown", value=note.text, height=350)
+        visible = st.checkbox("Visible to players", value=note.visible)
         removed = []
-        for index, image in enumerate(note["images"]):
+        for index, image in enumerate(note.images):
             try:
                 name, content = get_board_image(principal, image)
             except (FileNotFoundError, PermissionError, PyMongoError, ValueError) as error:
@@ -86,27 +86,24 @@ def render_editor(principal: Principal) -> None:
         return
     notes = list(editor["notes"])
     index = editor["index"]
-    if delete:
-        del notes[index]
-    else:
-        updated: PublicNote = {
-            "header": header.strip(),
-            "date": date.strip(),
-            "text": text,
-            "visible": visible,
-            "images": [
-                image for image, remove in zip(note["images"], removed) if not remove
-            ],
-        }
-        if index is None:
-            notes.append(updated)
-        else:
-            notes[index] = updated
     try:
-        if not delete:
-            updated["images"].extend(
+        if delete:
+            del notes[index]
+        else:
+            updated = PublicNote(
+                header=header.strip(),
+                date=date.strip(),
+                text=text,
+                visible=visible,
+                images=[image for image, remove in zip(note.images, removed) if not remove],
+            )
+            updated.images.extend(
                 add_board_image(principal, upload.name, upload.getvalue()) for upload in uploads
             )
+            if index is None:
+                notes.append(updated)
+            else:
+                notes[index] = updated
         saved = save_board(principal, notes, editor["revision"])
     except (PermissionError, PyMongoError, InvalidDocument, ValueError) as error:
         st.error(f"Could not save public note: {error}")
@@ -131,7 +128,7 @@ def render_dm_public_view(principal: Principal) -> None:
         if st.button("Create public notes"):
             try:
                 created = create_board(principal)
-            except (PermissionError, PyMongoError) as error:
+            except (PermissionError, PyMongoError, ValueError) as error:
                 st.error(f"Could not create public notes: {error}")
             else:
                 if not created:
@@ -144,14 +141,14 @@ def render_dm_public_view(principal: Principal) -> None:
     if not notes:
         st.info("No public notes yet.")
     for index, note in enumerate(notes):
-        label = f"{note['date']} — {note['header']}" if note["date"] else note["header"]
+        label = f"{note.date} — {note.header}" if note.date else note.header
         with st.expander(label):
-            if not note["visible"]:
+            if not note.visible:
                 st.caption("Hidden from players")
             if st.button("Edit", key=f"edit_public_note_{index}", icon=":material/edit:"):
                 start_editor(principal, notes, revision, index)
-            st.markdown(note["text"])
-            for image_index, image in enumerate(note["images"]):
+            st.markdown(note.text)
+            for image_index, image in enumerate(note.images):
                 try:
                     name, content = get_board_image(principal, image)
                 except (FileNotFoundError, PermissionError, PyMongoError, ValueError) as error:
@@ -183,10 +180,10 @@ def render_player_public_tab(principal: Principal) -> None:
     if not notes:
         st.info("No public notes yet.")
     for note in notes:
-        label = f"{note['date']} — {note['header']}" if note["date"] else note["header"]
+        label = f"{note.date} — {note.header}" if note.date else note.header
         with st.expander(label):
-            st.markdown(note["text"])
-            for image_index, image in enumerate(note["images"]):
+            st.markdown(note.text)
+            for image_index, image in enumerate(note.images):
                 try:
                     name, content = get_board_image(principal, image)
                 except (FileNotFoundError, PermissionError, PyMongoError, ValueError) as error:

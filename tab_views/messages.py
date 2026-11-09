@@ -1,12 +1,13 @@
 from datetime import datetime
 from html import escape
-from typing import Any, Callable
+from typing import Callable
 
 import streamlit as st
 from pymongo.errors import PyMongoError
 from typesafe_sdk import TypeSafeError
 
 from .message_injection import get_message_injection_checker
+from .data_models import ChatMessage
 from .principal import Principal
 from .user_data import get_conversation, get_unread_counts, mark_messages_read, send_message
 
@@ -26,7 +27,7 @@ def format_dm_timestamp(timestamp: str) -> str:
 
 
 def _render_chat_messages(
-    messages: list[dict[str, Any]],
+    messages: list[ChatMessage],
     *,
     timestamp_formatter: Callable[[str], str] = format_timestamp,
     max_height: int | None = None,
@@ -37,9 +38,9 @@ def _render_chat_messages(
 
     rows = []
     for message in reversed(messages):
-        sender = escape(message["sender"])
-        timestamp = escape(timestamp_formatter(message["timestamp"]))
-        text = escape(message["text"])
+        sender = escape(message.sender)
+        timestamp = escape(timestamp_formatter(message.timestamp))
+        text = escape(message.text)
         rows.append(
             '<div style="padding: 0.25rem 0; overflow-wrap: anywhere;">'
             '<div style="font-size: 0.8rem; opacity: 0.7;">'
@@ -55,7 +56,7 @@ def _render_chat_messages(
 def _show_player_chat(principal: Principal):
     try:
         messages = get_conversation(principal, principal.username)
-    except (PermissionError, PyMongoError) as error:
+    except (PermissionError, PyMongoError, ValueError) as error:
         st.error(f"Could not load messages: {error}")
         return
 
@@ -64,7 +65,7 @@ def _show_player_chat(principal: Principal):
         if _message_is_allowed(prompt):
             try:
                 send_message(principal, principal.username, prompt.strip())
-            except (PermissionError, PyMongoError) as error:
+            except (PermissionError, PyMongoError, ValueError) as error:
                 st.error(f"Could not send message: {error}")
             else:
                 st.rerun()
@@ -89,7 +90,7 @@ def _render_dm_conversation(principal: Principal, player_name: str, unread_count
     if st.session_state.get(expander_key, False) and unread_count:
         try:
             mark_messages_read(principal, player_name)
-        except (PermissionError, PyMongoError) as error:
+        except (PermissionError, PyMongoError, ValueError) as error:
             st.error(f"Could not mark {player_name}'s messages as read: {error}")
         else:
             unread_count = 0
@@ -102,7 +103,7 @@ def _render_dm_conversation(principal: Principal, player_name: str, unread_count
     ):
         try:
             messages = get_conversation(principal, player_name)
-        except (PermissionError, PyMongoError) as error:
+        except (PermissionError, PyMongoError, ValueError) as error:
             st.error(f"Could not load messages: {error}")
             return
 
@@ -120,7 +121,7 @@ def _render_dm_conversation(principal: Principal, player_name: str, unread_count
             if _message_is_allowed(prompt):
                 try:
                     send_message(principal, player_name, prompt.strip())
-                except (PermissionError, PyMongoError) as error:
+                except (PermissionError, PyMongoError, ValueError) as error:
                     st.error(f"Could not send message: {error}")
                 else:
                     st.rerun()

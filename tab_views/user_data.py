@@ -4,11 +4,12 @@ from .database import (
     get_database,
     load_chat_messages,
     load_dm_unread_counts,
-    load_private_data,
+    load_private_notes,
     mark_dm_messages_read,
     save_chat_message,
-    save_private_data,
+    save_private_notes,
 )
+from .data_models import ChatMessage, PrivateNote
 from .principal import Principal
 
 
@@ -24,7 +25,7 @@ def _conversation(principal: Principal, player_name: str) -> tuple[str, str]:
     return player_name, "dm"
 
 
-def get_conversation(principal: Principal, player_name: str) -> list[dict]:
+def get_conversation(principal: Principal, player_name: str) -> list[ChatMessage]:
     player, dm = _conversation(principal, player_name)
     return load_chat_messages(player, dm)
 
@@ -43,52 +44,42 @@ def mark_messages_read(principal: Principal, player_name: str) -> None:
 def send_message(principal: Principal, player_name: str, text: str) -> None:
     _conversation(principal, player_name)
     sender, recipient = (player_name, "dm") if principal.role == "player" else ("dm", player_name)
-    message = {
+    fields: dict[str, str | bool] = {
         "sender": sender,
         "recipient": recipient,
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "text": text,
     }
     if recipient == "dm":
-        message["dm_read"] = False
+        fields["dm_read"] = False
+    message = ChatMessage.model_validate(fields)
     save_chat_message(message)
 
 
-def _notes_from(user_data: dict) -> list[dict]:
-    notes = user_data.get("notes")
-    if not isinstance(notes, list):
-        return []
-    return [note for note in notes if isinstance(note, dict) and "id" in note]
-
-
-def load_user_notes(principal: Principal) -> list[dict]:
+def load_user_notes(principal: Principal) -> list[PrivateNote]:
     principal.require_player()
-    return _notes_from(load_private_data(principal.username))
+    return load_private_notes(principal.username)
 
 
 def save_user_note(principal: Principal, note_id: str, text: str) -> None:
     principal.require_player()
-    user_data = load_private_data(principal.username)
-    notes = _notes_from(user_data)
+    notes = load_private_notes(principal.username)
     for note in notes:
-        if note["id"] == note_id:
-            note["text"] = text
+        if note.id == note_id:
+            note.text = text
             break
     else:
         notes.append(
-            {
-                "id": note_id,
-                "text": text,
-                "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            }
+            PrivateNote(
+                id=note_id,
+                text=text,
+                created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            )
         )
-    save_private_data(principal.username, {"notes": notes})
+    save_private_notes(principal.username, notes)
 
 
 def delete_user_note(principal: Principal, note_id: str) -> None:
     principal.require_player()
-    user_data = load_private_data(principal.username)
-    notes = [
-        note for note in _notes_from(user_data) if note["id"] != note_id
-    ]
-    save_private_data(principal.username, {"notes": notes})
+    notes = [note for note in load_private_notes(principal.username) if note.id != note_id]
+    save_private_notes(principal.username, notes)

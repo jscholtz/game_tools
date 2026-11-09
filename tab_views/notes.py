@@ -7,6 +7,7 @@ from pymongo.errors import PyMongoError
 from typesafe_sdk import TypeSafeError
 
 from .message_injection import get_message_injection_checker
+from .data_models import PrivateNote
 from .principal import Principal
 from .user_data import delete_user_note, load_user_notes, save_user_note
 
@@ -15,9 +16,9 @@ DRAFTS_KEY = "note_drafts"
 EDITING_KEY = "note_editing"
 
 
-def _local_datetime(note: dict) -> datetime:
+def _local_datetime(note: PrivateNote) -> datetime:
     try:
-        created = datetime.fromisoformat(note["created_at"])
+        created = datetime.fromisoformat(note.created_at)
     except (KeyError, TypeError, ValueError):
         return datetime.fromtimestamp(0, LOCAL_TZ)
     return created.astimezone(LOCAL_TZ)
@@ -56,18 +57,18 @@ def _delete(principal: Principal, note_id: str, is_draft: bool) -> bool:
     if not is_draft:
         try:
             delete_user_note(principal, note_id)
-        except (PermissionError, PyMongoError, FileNotFoundError) as error:
+        except (PermissionError, PyMongoError, ValueError, FileNotFoundError) as error:
             st.error(f"Could not delete note: {error}")
             return False
     return True
 
 
-def _render_note(principal: Principal, note: dict, is_draft: bool) -> None:
-    note_id = note["id"]
+def _render_note(principal: Principal, note: PrivateNote, is_draft: bool) -> None:
+    note_id = note.id
     editing = is_draft or note_id in st.session_state[EDITING_KEY]
     changed = False
 
-    text = st.session_state.get(_text_key(note_id), note.get("text", ""))
+    text = st.session_state.get(_text_key(note_id), note.text)
     first_line = text.split("\n", 1)[0].strip() or "Untitled note"
     date = datetime.now(LOCAL_TZ) if is_draft else _local_datetime(note)
     header = f"{date.strftime('%d %B %Y')} — {first_line}"
@@ -102,7 +103,7 @@ def _render_note(principal: Principal, note: dict, is_draft: bool) -> None:
         with text_column:
             if editing:
                 if _text_key(note_id) not in st.session_state:
-                    st.session_state[_text_key(note_id)] = note.get("text", "")
+                    st.session_state[_text_key(note_id)] = note.text
                 st.text_area(
                     "Note",
                     key=_text_key(note_id),
@@ -110,7 +111,7 @@ def _render_note(principal: Principal, note: dict, is_draft: bool) -> None:
                     label_visibility="collapsed",
                 )
             else:
-                st.markdown(note.get("text", ""))
+                st.markdown(note.text)
 
 
 def render_notes_tab(principal: Principal):
@@ -125,12 +126,16 @@ def render_notes_tab(principal: Principal):
     except FileNotFoundError:
         st.error(f"User data not found for {principal.username}.")
         return
-    except (PermissionError, PyMongoError) as error:
+    except (PermissionError, PyMongoError, ValueError) as error:
         st.error(f"Could not load notes: {error}")
         return
 
     for note_id in list(st.session_state[DRAFTS_KEY]):
-        _render_note(principal, {"id": note_id, "text": ""}, is_draft=True)
+        _render_note(
+            principal,
+            PrivateNote(id=note_id, text="", created_at=datetime.now(LOCAL_TZ).isoformat()),
+            is_draft=True,
+        )
 
     notes.sort(key=_local_datetime, reverse=True)
     current_day = None

@@ -122,8 +122,8 @@ def _edit_character_card(principal: Principal, username: str) -> None:
     is_dm = principal.role == "dm"
     edit_key = "editing_character_card" if is_dm else "editing_player_character"
     try:
-        data = get_character(principal, username)
-    except (FileNotFoundError, PermissionError, PyMongoError) as error:
+        data = get_character(principal, username).model_dump(exclude_unset=True)
+    except (FileNotFoundError, PermissionError, PyMongoError, ValueError) as error:
         st.error(f"Could not load character data: {error}")
         if st.button("Back to characters"):
             st.session_state.pop(edit_key, None)
@@ -290,7 +290,7 @@ def _edit_character_card(principal: Principal, username: str) -> None:
         removed.append("portrait")
     try:
         update_character(principal, username, fields, removed)
-    except (FileNotFoundError, PermissionError, PyMongoError, InvalidDocument) as error:
+    except (FileNotFoundError, PermissionError, PyMongoError, InvalidDocument, ValueError) as error:
         st.error(f"Could not save character data: {error}")
     else:
         st.session_state.pop(edit_key, None)
@@ -303,7 +303,7 @@ def _render_dm_characters(principal: Principal, player_names: list[str]) -> None
     try:
         characters = get_dm_character_cards(principal, player_names)
         unread = get_dm_unread_counts(principal, player_names)
-    except (PermissionError, PyMongoError) as error:
+    except (PermissionError, PyMongoError, ValueError) as error:
         st.error(f"Could not load characters or unread messages: {error}")
         return
     if not player_names:
@@ -311,7 +311,8 @@ def _render_dm_characters(principal: Principal, player_names: list[str]) -> None
         return
     columns = st.columns(2)
     for index, username in enumerate(player_names):
-        data = characters.get(username)
+        character = characters.get(username)
+        data = character.model_dump(exclude_unset=True) if character is not None else None
         with columns[index % len(columns)], st.container(border=True):
             name = data.get("character") if data else None
             count = unread.get(username, 0)
@@ -368,10 +369,10 @@ def render_character_tab(principal: Principal):
         return
 
     try:
-        user_data = get_character(principal, username)
+        user_data = get_character(principal, username).model_dump(exclude_unset=True)
     except FileNotFoundError:
         st.error(f"User data not found for {username}.")
-    except (PermissionError, PyMongoError) as error:
+    except (PermissionError, PyMongoError, ValueError) as error:
         st.error(f"Could not load character data: {error}")
     else:
         if st.button("Edit character", icon=":material/edit:"):

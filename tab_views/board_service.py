@@ -1,11 +1,11 @@
 from .database import (
-    PublicNote,
     create_public_notes,
     load_public_image,
     load_public_notes,
     save_public_image,
     save_public_notes,
 )
+from .data_models import PublicNote
 from .principal import Principal
 
 
@@ -20,12 +20,12 @@ def get_player_board(principal: Principal) -> list[PublicNote]:
     board = load_public_notes()
     if board is None:
         return []
-    return [note for note in board[0] if note["visible"]]
+    return [note for note in board[0] if note.visible]
 
 
 def get_board_image(principal: Principal, reference: str) -> tuple[str, bytes]:
     if principal.role == "player":
-        if not any(reference in note["images"] for note in get_player_board(principal)):
+        if not any(reference in note.images for note in get_player_board(principal)):
             raise PermissionError("Image is not visible to players.")
     else:
         principal.require_dm()

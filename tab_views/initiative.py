@@ -24,6 +24,17 @@ TRACKER_SAVE_EXECUTOR = ThreadPoolExecutor(
 )
 
 
+def make_combatant(name: str, initiative: int, hit_points: int) -> dict[str, Any]:
+    return {
+        "id": uuid4().hex,
+        "name": name,
+        "initiative": initiative,
+        "dead": False,
+        "current_hp": hit_points,
+        "max_hp": hit_points,
+    }
+
+
 def get_session_tracker() -> dict[str, Any]:
     tracker = load_tracker()
     st.session_state[TRACKER_SESSION_KEY] = deepcopy(tracker)
@@ -179,14 +190,7 @@ def render_initiative_tab(is_dm: bool = True) -> None:
             if not name:
                 st.error("Enter a character or monster name.")
             else:
-                new_combatant = {
-                    "id": uuid4().hex,
-                    "name": name,
-                    "initiative": int(initiative),
-                    "dead": False,
-                    "current_hp": int(hit_points),
-                    "max_hp": int(hit_points),
-                }
+                new_combatant = make_combatant(name, int(initiative), int(hit_points))
                 combatants.append(new_combatant)
                 try:
                     persist_tracker(tracker)

@@ -2,8 +2,10 @@ from html import escape
 
 import streamlit as st
 from pymongo.errors import PyMongoError
+from redis.exceptions import RedisError
 
 from .database import load_bestiary_display, load_bestiary_index
+from .initiative import get_session_tracker, make_combatant, persist_tracker
 
 FRAME_PADDING = 50
 
@@ -129,6 +131,27 @@ def render_bestiary_tab() -> None:
         )
         if selected is None:
             return
+
+        creature = next(entry for entry in matches if entry["slug"] == selected)
+        hit_points = creature.get("hit_points")
+        if not isinstance(hit_points, int) or isinstance(hit_points, bool) or hit_points < 1:
+            st.error("Creature hit points must be a positive whole number.")
+        else:
+            with st.form(f"bestiary_add_{selected}"):
+                initiative = st.number_input("Initiative", value=0, step=1)
+                st.caption(f"Starting hit points: {hit_points}")
+                add_creature = st.form_submit_button("Add to initiative")
+            if add_creature:
+                try:
+                    tracker = get_session_tracker()
+                    tracker["combatants"].append(
+                        make_combatant(creature["name"], int(initiative), hit_points)
+                    )
+                    persist_tracker(tracker)
+                except (KeyError, PyMongoError, RedisError, ValueError) as error:
+                    st.error(f"Could not add creature to initiative: {error}")
+                else:
+                    st.success(f"{creature['name']} added to initiative.")
 
         try:
             display = load_bestiary_display(selected)

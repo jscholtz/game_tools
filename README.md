@@ -47,6 +47,9 @@ the matching creature selector and stat block appear on the right. Selecting a
 result loads its HTML stat block from `creatures.display` in a sandboxed frame,
 with external resources blocked. Search fields and selected stat blocks are
 cached for the app's lifetime; restart the app to pick up database changes.
+The DM can add a selected creature to the initiative tracker with its listed
+hit points and a chosen initiative (default 0). Each click adds a separate
+combatant; use the tracker to reorder combatants or edit their values.
 
 The Public Board stores an ordered `notes` list in the `public_data` document
 `public_notes`. Each note contains `header`, `date`, `text`, `visible`, and

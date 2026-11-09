@@ -43,6 +43,7 @@ def load_bestiary_index() -> list[dict[str, Any]]:
         "challenge_rating": 1,
         "cr": 1,
         "document__title": 1,
+        "hit_points": 1,
     }
     return list(get_mongodb_client()["creatures"]["basic_list"].find({}, fields))
 

@@ -14,6 +14,8 @@ only visible notes and images. Character and private-note operations enforce
 ownership, and DM character edits are limited to shared character fields.
 These checks use the authenticated server-side session principal; storage
 modules remain internal to the application, not independently authenticated APIs.
+Character edit validation and initiative combatant updates live in their
+respective services; views handle input, presentation, and session state.
 
 On first initiative load, if Redis has no tracker state, the app copies the
 saved tracker and default from MongoDB into Redis. Redis holds live tracker

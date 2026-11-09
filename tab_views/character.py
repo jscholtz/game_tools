@@ -1,57 +1,26 @@
 from html import escape
-from io import BytesIO
-from typing import Any
-from urllib.parse import urlsplit
-
 import streamlit as st
 from bson.errors import InvalidDocument
-from PIL import Image, UnidentifiedImageError
 from pymongo.errors import PyMongoError
 
 from .config import load_character_card_players
 from .character_service import (
+    CARD_STATS,
+    CLASS_FIELDS,
+    PLAYER_TEXT_FIELDS,
+    CharacterEdit,
+    CharacterInputError,
     get_character,
     get_dm_character_cards,
     get_dm_unread_counts,
     update_character,
+    valid_website_url,
 )
 from .principal import Principal
-
-CARD_STATS = (
-    ("passive_perception", "Passive perception"),
-    ("passive_insight", "Passive insight"),
-    ("armor_class", "Armor class"),
-    ("max_hp", "Maximum HP"),
-)
-CLASS_FIELDS = (
-    ("class_name", "Class"),
-    ("class_url", "Class URL"),
-    ("subclass_name", "Subclass"),
-    ("subclass_url", "Subclass URL"),
-    ("levels", "Levels"),
-)
-PLAYER_TEXT_FIELDS = (
-    ("character_description", "Character description"),
-    ("background", "Character background"),
-    ("story", "Character story"),
-)
 
 
 def _stat_value(data: dict, field: str):
     return data.get(field)
-
-
-def _valid_website_url(url: str) -> bool:
-    try:
-        parsed = urlsplit(url)
-        return (
-            parsed.scheme in ("http", "https")
-            and bool(parsed.hostname)
-            and parsed.username is None
-            and parsed.password is None
-        )
-    except ValueError:
-        return False
 
 
 def _render_portrait(data: dict) -> None:
@@ -63,40 +32,20 @@ def _render_portrait(data: dict) -> None:
             st.error("Character picture must be non-empty binary data.")
 
 
-def _character_classes(data: dict) -> list[dict[str, str]]:
-    classes = data.get("classes", [])
-    if not isinstance(classes, list):
-        raise ValueError("Character classes must be a list.")
-    expected = {field for field, _ in CLASS_FIELDS}
-    if any(
-        not isinstance(entry, dict)
-        or set(entry) != expected
-        or any(not isinstance(entry[field], str) for field, _ in CLASS_FIELDS)
-        for entry in classes
-    ):
-        raise ValueError("Each character class must contain the five text fields.")
-    return classes
-
-
 def _render_character_details(data: dict) -> None:
     parts = []
     if data.get("race"):
         parts.append(escape(str(data["race"])))
 
-    try:
-        classes = _character_classes(data)
-    except ValueError as error:
-        st.error(f"Could not display character classes: {error}")
-        return
     class_parts = []
-    for entry in classes:
+    for entry in data.get("classes", []):
         labels = []
         for label, name_field, url_field in (
             ("Class", "class_name", "class_url"),
             ("Subclass", "subclass_name", "subclass_url"),
         ):
             name, url = entry[name_field], entry[url_field]
-            if url and not _valid_website_url(url):
+            if url and not valid_website_url(url):
                 st.error(f"{label} website URL is invalid.")
                 url = ""
             if name or url:
@@ -131,37 +80,12 @@ def _edit_character_card(principal: Principal, username: str) -> None:
         return
 
     character_name = data.get("character", "")
-    if not isinstance(character_name, str) or (
-        not is_dm
-        and any(not isinstance(data.get(field, ""), str) for field, _ in PLAYER_TEXT_FIELDS)
-    ):
-        st.error("Character name and character text fields must be text.")
-        if st.button("Back to characters"):
-            st.session_state.pop(edit_key, None)
-            st.rerun()
-        return
-
     initiative_bonus = data.get("initiative_bonus", 0)
-    if not is_dm and (
-        not isinstance(initiative_bonus, int) or isinstance(initiative_bonus, bool)
-    ):
-        st.error("Initiative bonus must be a whole number.")
-        if st.button("Back to characters"):
-            st.session_state.pop(edit_key, None)
-            st.rerun()
-        return
-
-    try:
-        classes = _character_classes(data)
-    except ValueError as error:
-        st.error(f"Could not edit character classes: {error}")
-        if st.button("Back to characters"):
-            st.session_state.pop(edit_key, None)
-            st.rerun()
-        return
+    classes = data.get("classes", [])
 
     st.subheader(f"Edit character: {username}")
     st.caption("Leave a stat blank if it is unknown.")
+    initiative_input = None
     with st.form(f"character_card_{username}"):
         character = st.text_input("Character name", value=character_name)
         stats = {
@@ -205,91 +129,22 @@ def _edit_character_card(principal: Principal, username: str) -> None:
         st.rerun()
     if not save:
         return
-    if not character.strip():
-        st.error("Enter a character name.")
-        return
-    fields: dict[str, Any] = {"character": character.strip()}
-    removed = []
-    for field, label in CARD_STATS:
-        value = stats[field].strip()
-        if not value:
-            removed.append(field)
-            continue
-        if not value.isascii() or not value.isdecimal():
-            st.error(f"{label} must be a non-negative whole number.")
-            return
-        number = int(value)
-        if number > 2**31 - 1:
-            st.error(f"{label} is too large.")
-            return
-        fields[field] = number
-    if not is_dm:
-        bonus = initiative_input.strip()
-        digits = bonus.removeprefix("+").removeprefix("-")
-        if (
-            not digits
-            or not digits.isascii()
-            or not digits.isdecimal()
-            or bonus not in (digits, f"+{digits}", f"-{digits}")
-        ):
-            st.error("Initiative bonus must be a whole number.")
-            return
-        if len(digits.lstrip("0")) > 10:
-            st.error("Initiative bonus is too large.")
-            return
-        number = int(digits.lstrip("0") or "0")
-        if bonus.startswith("-"):
-            number = -number
-        if not -(2**31) <= number <= 2**31 - 1:
-            st.error("Initiative bonus is too large.")
-            return
-        fields["initiative_bonus"] = number
-    updated_classes = []
-    for row in zip(*(edited_classes[field] for field, _ in CLASS_FIELDS), strict=True):
-        if any(value is not None and not isinstance(value, str) for value in row):
-            st.error("Class fields must contain text.")
-            return
-        entry = {
-            field: value.strip() if value is not None else ""
-            for (field, _), value in zip(CLASS_FIELDS, row, strict=True)
-        }
-        if not any(entry.values()):
-            continue
-        if not entry["class_name"]:
-            st.error("Each class must have a name.")
-            return
-        for field, label in (("class_url", "Class"), ("subclass_url", "Subclass")):
-            if entry[field] and not _valid_website_url(entry[field]):
-                st.error(f"{label} website must be a valid HTTP or HTTPS URL.")
-                return
-        levels = entry["levels"]
-        if levels and (
-            not levels.isascii()
-            or not levels.isdecimal()
-            or not levels.strip("0")
-        ):
-            st.error("Class levels must be a positive whole number or blank.")
-            return
-        updated_classes.append(entry)
-    fields["classes"] = updated_classes
-    if not is_dm:
-        fields.update(player_text)
-    if portrait is not None:
-        picture = portrait.getvalue()
-        if not picture:
-            st.error("The uploaded picture is empty.")
-            return
-        try:
-            with Image.open(BytesIO(picture)) as image:
-                image.verify()
-        except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
-            st.error("The uploaded picture is invalid or too large.")
-            return
-        fields["portrait"] = picture
-    elif remove_portrait:
-        removed.append("portrait")
     try:
-        update_character(principal, username, fields, removed)
+        update_character(
+            principal,
+            username,
+            CharacterEdit(
+                character=character,
+                stats=stats,
+                classes=edited_classes,
+                initiative_bonus=initiative_input,
+                player_text=player_text,
+                portrait=portrait.getvalue() if portrait is not None else None,
+                remove_portrait=remove_portrait,
+            ),
+        )
+    except CharacterInputError as error:
+        st.error(str(error))
     except (FileNotFoundError, PermissionError, PyMongoError, InvalidDocument, ValueError) as error:
         st.error(f"Could not save character data: {error}")
     else:

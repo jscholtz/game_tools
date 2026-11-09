@@ -9,15 +9,20 @@ from redis.exceptions import RedisError
 from .bestiary_service import get_bestiary_display
 from .initiative_models import InitiativeTracker
 from .initiative_service import (
+    add_combatant as add_combatant_to_tracker,
     advance_turn,
     get_dm_tracker,
     get_dm_tracker_default,
     get_player_tracker,
-    make_combatant,
     queue_dm_tracker_save,
+    remove_combatant,
     reorder_combatants,
     save_dm_tracker,
     save_dm_tracker_snapshot,
+    set_combatant_hp,
+    set_combatant_initiative,
+    set_combatant_visibility,
+    toggle_combatant_death,
 )
 from .principal import Principal
 from .stat_blocks import render_stat_block_tab_link
@@ -104,8 +109,8 @@ def edit_initiative(principal: Principal, combatant_id: str) -> None:
         save = st.form_submit_button("Save")
 
     if save:
-        actor.initiative = int(initiative)
         try:
+            set_combatant_initiative(principal, tracker, combatant_id, int(initiative))
             persist_tracker(principal, tracker)
         except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
             st.error(f"Could not update initiative: {error}")
@@ -116,12 +121,9 @@ def edit_initiative(principal: Principal, combatant_id: str) -> None:
 def save_combatant_hp(principal: Principal, combatant_id: str, current_hp: int) -> None:
     try:
         tracker = get_session_tracker(principal)
-        actor = next(
-            item for item in tracker.combatants if item.id == combatant_id
-        )
-        actor.current_hp = min(current_hp, actor.max_hp)
+        set_combatant_hp(principal, tracker, combatant_id, current_hp)
         persist_tracker(principal, tracker)
-    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError, StopIteration) as error:
+    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
         st.error(f"Could not update hit points: {error}")
     else:
         st.rerun(scope="fragment")
@@ -130,12 +132,9 @@ def save_combatant_hp(principal: Principal, combatant_id: str, current_hp: int) 
 def save_combatant_visibility(principal: Principal, combatant_id: str, checkbox_key: str) -> None:
     try:
         tracker = get_session_tracker(principal)
-        actor = next(
-            item for item in tracker.combatants if item.id == combatant_id
-        )
-        actor.visible = st.session_state[checkbox_key]
+        set_combatant_visibility(principal, tracker, combatant_id, st.session_state[checkbox_key])
         persist_tracker(principal, tracker)
-    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError, StopIteration) as error:
+    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
         st.error(f"Could not update combatant visibility: {error}")
 
 
@@ -217,18 +216,13 @@ def render_dm_initiative_tab(principal: Principal) -> None:
             )
 
         if add_combatant:
-            name = name.strip()
-            if not name:
-                st.error("Enter a character or monster name.")
+            try:
+                add_combatant_to_tracker(principal, tracker, name, int(initiative), int(hit_points))
+                persist_tracker(principal, tracker)
+            except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
+                st.error(f"Could not save initiative tracker: {error}")
             else:
-                new_combatant = make_combatant(name, int(initiative), int(hit_points))
-                combatants.append(new_combatant)
-                try:
-                    persist_tracker(principal, tracker)
-                except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
-                    st.error(f"Could not save initiative tracker: {error}")
-                else:
-                    st.rerun(scope="fragment")
+                st.rerun(scope="fragment")
 
     displayed_combatants = combatants
     if not displayed_combatants:
@@ -342,10 +336,8 @@ def render_dm_initiative_tab(principal: Principal) -> None:
                         help="Revive" if actor.dead else "Make dead",
                         key=f"dead_{actor.id}",
                     ):
-                        actor.dead = not actor.dead
-                        if actor.dead and current_turn_id == actor.id:
-                            tracker.current_turn_id = None
                         try:
+                            toggle_combatant_death(principal, tracker, actor.id)
                             persist_tracker(principal, tracker)
                         except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
                             st.error(f"Could not update combatant status: {error}")
@@ -354,10 +346,8 @@ def render_dm_initiative_tab(principal: Principal) -> None:
 
                     with st.container(key=f"initiative-delete-{actor.id}", width="content"):
                         if st.button("❌", help="Delete", key=f"delete_{actor.id}"):
-                            combatants.remove(actor)
-                            if current_turn_id == actor.id:
-                                tracker.current_turn_id = None
                             try:
+                                remove_combatant(principal, tracker, actor.id)
                                 persist_tracker(principal, tracker)
                             except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
                                 st.error(f"Could not delete combatant: {error}")

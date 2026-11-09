@@ -90,6 +90,59 @@ def make_combatant(name: str, initiative: int, hit_points: int) -> Combatant:
     )
 
 
+def _combatant(principal: Principal, tracker: InitiativeTracker, combatant_id: str) -> Combatant:
+    principal.require_dm()
+    actor = next((item for item in tracker.combatants if item.id == combatant_id), None)
+    if actor is None:
+        raise ValueError("Combatant no longer exists.")
+    return actor
+
+
+def add_combatant(
+    principal: Principal, tracker: InitiativeTracker, name: str, initiative: int, hit_points: int
+) -> None:
+    principal.require_dm()
+    name = name.strip()
+    if not name:
+        raise ValueError("Enter a character or monster name.")
+    tracker.combatants.append(make_combatant(name, initiative, hit_points))
+
+
+def set_combatant_initiative(
+    principal: Principal, tracker: InitiativeTracker, combatant_id: str, initiative: int
+) -> None:
+    _combatant(principal, tracker, combatant_id).initiative = initiative
+
+
+def set_combatant_hp(
+    principal: Principal, tracker: InitiativeTracker, combatant_id: str, current_hp: int
+) -> None:
+    actor = _combatant(principal, tracker, combatant_id)
+    actor.current_hp = min(current_hp, actor.max_hp)
+
+
+def set_combatant_visibility(
+    principal: Principal, tracker: InitiativeTracker, combatant_id: str, visible: bool
+) -> None:
+    _combatant(principal, tracker, combatant_id).visible = visible
+
+
+def toggle_combatant_death(
+    principal: Principal, tracker: InitiativeTracker, combatant_id: str
+) -> None:
+    actor = _combatant(principal, tracker, combatant_id)
+    actor.dead = not actor.dead
+    if actor.dead and tracker.current_turn_id == actor.id:
+        tracker.current_turn_id = None
+
+
+def remove_combatant(principal: Principal, tracker: InitiativeTracker, combatant_id: str) -> None:
+    actor = _combatant(principal, tracker, combatant_id)
+    tracker.combatants.remove(actor)
+    if tracker.current_turn_id == actor.id:
+        tracker.current_turn_id = None
+
+
 def advance_turn(principal: Principal, tracker: InitiativeTracker) -> None:
     principal.require_dm()
     living = [actor for actor in tracker.combatants if not actor.dead]

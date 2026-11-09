@@ -50,6 +50,9 @@ cached for the app's lifetime; restart the app to pick up database changes.
 The DM can add a selected creature to the initiative tracker with its listed
 hit points and a chosen initiative (default 0). Each click adds a separate
 combatant; use the tracker to reorder combatants or edit their values.
+Newly added Bestiary combatants have a DM-only open-in-new-tab icon next to
+their name in the tracker, which opens a stat-block snapshot; allow popups if blocked.
+Existing combatants without a creature identifier must be re-added to use it.
 
 The Public Board stores an ordered `notes` list in the `public_data` document
 `public_notes`. Each note contains `header`, `date`, `text`, `visible`, and

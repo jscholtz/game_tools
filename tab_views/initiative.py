@@ -8,12 +8,14 @@ import streamlit as st
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
+from .database import load_bestiary_display
 from .initiative_store import (
     load_tracker,
     load_tracker_default,
     save_tracker,
     save_tracker_snapshot,
 )
+from .stat_blocks import render_stat_block_tab_link
 
 TRACKER_SESSION_KEY = "initiative_tracker"
 TRACKER_SAVE_FUTURES_KEY = "initiative_save_futures"
@@ -264,10 +266,24 @@ def render_initiative_tab(is_dm: bool = True) -> None:
                     hp_value_column,
                     buttons_column,
                 ) = st.columns([4, 1.2, 1, 2])
-                name_column.markdown(
-                    f"**{actor['name']}** (max hitpoints: {actor['max_hp']})"
-                    + (" — DEAD" if actor["dead"] else "")
-                )
+                with name_column:
+                    with st.container(horizontal=True, gap="small", vertical_alignment="top"):
+                        st.markdown(
+                            f"**{actor['name']}** (max hitpoints: {actor['max_hp']})"
+                            + (" — DEAD" if actor["dead"] else ""),
+                            width="content",
+                        )
+                        slug = actor.get("creature_slug")
+                        if slug is not None:
+                            if not isinstance(slug, str) or not slug:
+                                st.error("Creature identifier is invalid.")
+                            else:
+                                try:
+                                    display = load_bestiary_display(slug)
+                                except (FileNotFoundError, KeyError, PyMongoError) as error:
+                                    st.error(f"Could not load creature stat block: {error}")
+                                else:
+                                    render_stat_block_tab_link(display, actor["name"])
                 initiative_column.markdown(f"**Initiative:** {actor['initiative']}")
                 hp_key = f"current_hp_{actor['id']}"
                 if st.session_state.get(hp_key, actor["current_hp"]) > actor["max_hp"]:

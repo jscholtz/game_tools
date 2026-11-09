@@ -1,74 +1,10 @@
-from html import escape
-
 import streamlit as st
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
 from .database import load_bestiary_display, load_bestiary_index
 from .initiative import get_session_tracker, make_combatant, persist_tracker
-
-FRAME_PADDING = 50
-
-
-def _render_creature(display: dict) -> None:
-    html = display.get("inline")
-    sizes = display.get("sizes")
-    if (
-        not isinstance(html, str)
-        or "<head>" not in html
-        or "</body>" not in html
-        or not isinstance(sizes, list)
-        or len(sizes) != 2
-        or any(not isinstance(size, int) or isinstance(size, bool) or size <= 0 for size in sizes)
-    ):
-        st.error("Creature stat block has invalid HTML or dimensions.")
-        return
-
-    policy = (
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-        "img-src data:; font-src data:; base-uri 'none'; form-action 'none'"
-    )
-    meta = f'<meta http-equiv="Content-Security-Policy" content="{policy}">'
-    html = html.replace("<head>", f"<head>{meta}", 1)
-    resize_script = """
-<script>
-(() => {
-    const block = document.querySelector("stat-block");
-    if (!block) return;
-    const reportSize = () => {
-        const height = Math.ceil(block.getBoundingClientRect().bottom + window.scrollY);
-        window.parent.postMessage({type: "bestiary-height", height}, "*");
-    };
-    new ResizeObserver(reportSize).observe(block);
-    window.addEventListener("load", reportSize);
-    window.addEventListener("resize", reportSize);
-    reportSize();
-})();
-</script>
-"""
-    html = html.replace("</body>", f"{resize_script}</body>", 1)
-    height, width = sizes
-    height += 2 * FRAME_PADDING
-    width += 2 * FRAME_PADDING
-    st.iframe(
-        '<style>body { margin: 0; }</style>'
-        '<iframe id="stat-block" title="Creature stat block" sandbox="allow-scripts" '
-        f'srcdoc="{escape(html, quote=True)}" '
-        f'style="display: block; width: {width}px; height: {height}px; border: 0;"></iframe>'
-        '<script>'
-        'const frame = document.getElementById("stat-block");'
-        'window.addEventListener("message", (event) => {'
-        '  if (event.source !== frame.contentWindow || '
-        '      event.data?.type !== "bestiary-height" || '
-        '      !Number.isFinite(event.data.height) || event.data.height <= 0 || '
-        '      event.data.height > 100000) return;'
-        f'  frame.style.height = (Math.ceil(event.data.height) + {FRAME_PADDING}) + "px";'
-        '});'
-        '</script>',
-        width=width,
-        height="content",
-        alt="Creature stat block",
-    )
+from .stat_blocks import render_stat_block
 
 
 def render_bestiary_tab() -> None:
@@ -144,9 +80,9 @@ def render_bestiary_tab() -> None:
             if add_creature:
                 try:
                     tracker = get_session_tracker()
-                    tracker["combatants"].append(
-                        make_combatant(creature["name"], int(initiative), hit_points)
-                    )
+                    combatant = make_combatant(creature["name"], int(initiative), hit_points)
+                    combatant["creature_slug"] = selected
+                    tracker["combatants"].append(combatant)
                     persist_tracker(tracker)
                 except (KeyError, PyMongoError, RedisError, ValueError) as error:
                     st.error(f"Could not add creature to initiative: {error}")
@@ -158,4 +94,4 @@ def render_bestiary_tab() -> None:
         except (FileNotFoundError, KeyError, PyMongoError) as error:
             st.error(f"Could not load creature: {error}")
             return
-        _render_creature(display)
+        render_stat_block(display)

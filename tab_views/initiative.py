@@ -32,6 +32,7 @@ def make_combatant(name: str, initiative: int, hit_points: int) -> dict[str, Any
         "name": name,
         "initiative": initiative,
         "dead": False,
+        "visible": True,
         "current_hp": hit_points,
         "max_hp": hit_points,
     }
@@ -139,6 +140,18 @@ def save_combatant_hp(combatant_id: str, current_hp: int) -> None:
         st.rerun(scope="fragment")
 
 
+def save_combatant_visibility(combatant_id: str, checkbox_key: str) -> None:
+    try:
+        tracker = get_session_tracker()
+        actor = next(
+            item for item in tracker["combatants"] if item["id"] == combatant_id
+        )
+        actor["visible"] = st.session_state[checkbox_key]
+        persist_tracker(tracker)
+    except (KeyError, PyMongoError, RedisError, ValueError, StopIteration) as error:
+        st.error(f"Could not update combatant visibility: {error}")
+
+
 @st.fragment(run_every=1)
 def render_initiative_tab(is_dm: bool = True) -> None:
     if is_dm:
@@ -201,7 +214,10 @@ def render_initiative_tab(is_dm: bool = True) -> None:
                 else:
                     st.rerun(scope="fragment")
 
-    if not combatants:
+    displayed_combatants = combatants if is_dm else [
+        actor for actor in combatants if actor["visible"]
+    ]
+    if not displayed_combatants:
         st.caption("No combatants yet.")
 
     if is_dm:
@@ -251,7 +267,7 @@ def render_initiative_tab(is_dm: bool = True) -> None:
             else:
                 st.rerun(scope="fragment")
 
-    for actor in combatants:
+    for actor in displayed_combatants:
         is_current = actor["id"] == current_turn_id and not actor["dead"]
         container_key = (
             f"current-combatant-{actor['id']}"
@@ -284,6 +300,15 @@ def render_initiative_tab(is_dm: bool = True) -> None:
                                     st.error(f"Could not load creature stat block: {error}")
                                 else:
                                     render_stat_block_tab_link(display, actor["name"])
+                    visibility_key = f"visible_{actor['id']}"
+                    st.session_state[visibility_key] = actor["visible"]
+                    st.checkbox(
+                        "Visible",
+                        key=visibility_key,
+                        on_change=save_combatant_visibility,
+                        args=(actor["id"], visibility_key),
+                        help="Show this combatant to players.",
+                    )
                 initiative_column.markdown(f"**Initiative:** {actor['initiative']}")
                 hp_key = f"current_hp_{actor['id']}"
                 if st.session_state.get(hp_key, actor["current_hp"]) > actor["max_hp"]:

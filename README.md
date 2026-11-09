@@ -15,6 +15,12 @@ MongoDB's `initiative` collection as a recovery snapshot; this preserves the
 configured default tracker. If Redis loses its state, the saved snapshot is
 used to initialize it.
 
+Every initiative combatant has a boolean `visible` field. The DM can toggle
+**Visible** per combatant; unchecked entries are omitted from the player view
+but remain in the DM's turn order. Manually added combatants start visible;
+Bestiary additions start hidden. Existing current and default tracker states
+in Redis and MongoDB must have this field before deploying this version.
+
 The DM's Character tab shows cards for the player login names listed in
 `character_cards.toml`, in the configured order. Names are matched
 case-insensitively; missing or ambiguous accounts are reported. The file is
@@ -47,9 +53,10 @@ the matching creature selector and stat block appear on the right. Selecting a
 result loads its HTML stat block from `creatures.display` in a sandboxed frame,
 with external resources blocked. Search fields and selected stat blocks are
 cached for the app's lifetime; restart the app to pick up database changes.
-The DM can add a selected creature to the initiative tracker with its listed
-hit points and a chosen initiative (default 0). Each click adds a separate
-combatant; use the tracker to reorder combatants or edit their values.
+The DM can add a selected creature to the initiative tracker with a chosen
+name, its listed hit points, and a chosen initiative (default 0). The name
+defaults to the creature's name. Each click adds a separate combatant; use the
+tracker to reorder combatants or edit their values.
 Newly added Bestiary combatants have a DM-only open-in-new-tab icon next to
 their name in the tracker, which opens a stat-block snapshot; allow popups if blocked.
 Existing combatants without a creature identifier must be re-added to use it.

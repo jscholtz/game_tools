@@ -74,20 +74,26 @@ def render_bestiary_tab() -> None:
             st.error("Creature hit points must be a positive whole number.")
         else:
             with st.form(f"bestiary_add_{selected}"):
+                combatant_name = st.text_input("Name in initiative", value=creature["name"])
                 initiative = st.number_input("Initiative", value=0, step=1)
                 st.caption(f"Starting hit points: {hit_points}")
                 add_creature = st.form_submit_button("Add to initiative")
             if add_creature:
-                try:
-                    tracker = get_session_tracker()
-                    combatant = make_combatant(creature["name"], int(initiative), hit_points)
-                    combatant["creature_slug"] = selected
-                    tracker["combatants"].append(combatant)
-                    persist_tracker(tracker)
-                except (KeyError, PyMongoError, RedisError, ValueError) as error:
-                    st.error(f"Could not add creature to initiative: {error}")
+                combatant_name = combatant_name.strip()
+                if not combatant_name:
+                    st.error("Enter a name for the combatant.")
                 else:
-                    st.success(f"{creature['name']} added to initiative.")
+                    try:
+                        tracker = get_session_tracker()
+                        combatant = make_combatant(combatant_name, int(initiative), hit_points)
+                        combatant["creature_slug"] = selected
+                        combatant["visible"] = False
+                        tracker["combatants"].append(combatant)
+                        persist_tracker(tracker)
+                    except (KeyError, PyMongoError, RedisError, ValueError) as error:
+                        st.error(f"Could not add creature to initiative: {error}")
+                    else:
+                        st.success(f"{combatant_name} added to initiative.")
 
         try:
             display = load_bestiary_display(selected)

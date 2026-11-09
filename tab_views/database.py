@@ -8,7 +8,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from .config import get_required_env
 from .data_models import (
-    BestiaryDisplay, BestiaryEntry, CharacterData, ChatMessage, LoginRecord,
+    BestiaryDisplay, BestiaryEntry, CharacterData, ChatMessage, CustomCreature, LoginRecord,
     PrivateNote, PublicBoard, PublicNote,
 )
 
@@ -65,6 +65,35 @@ def load_bestiary_display(slug: str) -> BestiaryDisplay:
     if display is None:
         raise FileNotFoundError(f"Creature stat block not found: {slug}")
     return BestiaryDisplay.model_validate(display)
+
+
+def load_custom_creatures() -> list[CustomCreature]:
+    return [
+        CustomCreature.model_validate(document)
+        for document in get_database()["custom_bestiary"].find({}, {"_id": 0})
+    ]
+
+
+def load_custom_creature(slug: str) -> CustomCreature:
+    document = get_database()["custom_bestiary"].find_one({"_id": slug}, {"_id": 0})
+    if document is None:
+        raise FileNotFoundError(f"Custom creature not found: {slug}")
+    return CustomCreature.model_validate(document)
+
+
+def create_custom_creature(creature: CustomCreature) -> None:
+    get_database()["custom_bestiary"].insert_one(
+        {"_id": creature.slug, **creature.model_dump()}
+    )
+
+
+def update_custom_creature(creature: CustomCreature, previous_revision: str) -> None:
+    result = get_database()["custom_bestiary"].update_one(
+        {"_id": creature.slug, "revision": previous_revision},
+        {"$set": creature.model_dump()},
+    )
+    if result.matched_count == 0:
+        raise ValueError("Creature changed or was removed. Copy your draft and reopen it before saving.")
 
 
 def get_users() -> dict[str, LoginRecord]:

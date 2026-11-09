@@ -37,14 +37,16 @@ The main interaction path is:
 | **Messages with DM** | Chat with the DM; conversation refreshes automatically. | View player conversations, unread counts, and send replies. |
 | **Initiative Tracker** | See visible combatants, initiative, and turn status. | Manage combatants, HP, visibility, turn order, and tracker snapshots. |
 | **Bestiary** | Not shown. | Filter creatures, view stat blocks, and add creatures to initiative. |
+| **Custom Bestiary Editor** | Not shown. | Create and edit custom creatures and add saved creatures to initiative. |
 
-Tabs are role-dependent: players get **Notes**, while the DM gets **Bestiary**.
+Tabs are role-dependent: players get **Notes**, while the DM gets **Bestiary** and
+**Custom Bestiary Editor**.
 Both roles get the other four tabs.
 
 ### Module responsibilities
 
 - `tab_views/character.py`, `notes.py`, `public_board.py`, `messages.py`,
-  `initiative.py`, and `bestiary.py` render their respective tab interfaces.
+  `initiative.py`, `bestiary.py`, and `custom_bestiary.py` render their respective tab interfaces.
 - `auth_service.py` loads and checks logins. `principal.py` represents the
   authenticated account and provides role guards.
 - `character_service.py`, `board_service.py`, `user_data.py`,
@@ -127,11 +129,20 @@ string-valued `notes` fields must be migrated to that format before the affected
 players can use their notes. Invalid values are reported and are not overwritten.
 
 The DM-only **Bestiary** searches the `creatures.basic_list` MongoDB collection
-by name, type, challenge rating, size, and source. Filters appear on the left;
+and custom entries in `game_helper.custom_bestiary` by name, type, challenge
+rating, size, and source. Filters appear on the left;
 the matching creature selector and stat block appear on the right. Selecting a
 result loads its HTML stat block from `creatures.display` in a sandboxed frame,
 with external resources blocked. Search fields and selected stat blocks are
 cached for the app's lifetime; restart the app to pick up database changes.
+Custom entries are read live and appear under the **Custom** source. The DM-only
+**Custom Bestiary Editor** creates and edits creatures, including ability scores,
+statistics, and free-text traits and action sections. Name, type, size, armor
+class, speed, positive hit points, and a non-negative numeric or fractional
+challenge rating are required. Edits use revision checks to avoid overwriting
+concurrent changes. Custom stat blocks are simplified generated HTML; text is
+escaped and displayed in the same sandbox as standard stat blocks. Saved
+creatures can be added to initiative from either tab.
 The DM can add a selected creature to the initiative tracker with a chosen
 name, its listed hit points, and a chosen initiative (default 0). The name
 defaults to the creature's name. Each click adds a separate combatant; use the
@@ -164,7 +175,7 @@ Start Streamlit:
 uv run streamlit run main.py
 ```
 
-MongoDB collections used: `logins`, `private_data`, `chats`, `public_data`, and
+MongoDB collections used: `logins`, `private_data`, `chats`, `public_data`, `custom_bestiary`, and
 `initiative` in `game_helper`, plus `basic_list` and `display` in `creatures`.
 
 Before upgrading another database, migrate older data: initiative combatants

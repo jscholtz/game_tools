@@ -1,3 +1,5 @@
+from fractions import Fraction
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -20,6 +22,70 @@ class BestiaryEntry(BaseModel):
     cr: float
     document__title: str
     hit_points: int | None = None
+
+
+class CustomCreature(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True)
+
+    slug: str
+    revision: str
+    name: str
+    type: str
+    size: str
+    alignment: str = ""
+    challenge_rating: str
+    armor_class: str
+    hit_points: int = Field(ge=1)
+    hit_dice: str = ""
+    speed: str
+    strength: int = Field(ge=1)
+    dexterity: int = Field(ge=1)
+    constitution: int = Field(ge=1)
+    intelligence: int = Field(ge=1)
+    wisdom: int = Field(ge=1)
+    charisma: int = Field(ge=1)
+    saving_throws: str = ""
+    skills: str = ""
+    damage_vulnerabilities: str = ""
+    damage_resistances: str = ""
+    damage_immunities: str = ""
+    condition_immunities: str = ""
+    senses: str = ""
+    languages: str = ""
+    traits: str = ""
+    actions: str = ""
+    bonus_actions: str = ""
+    reactions: str = ""
+    legendary_actions: str = ""
+    lair_actions: str = ""
+    notes: str = ""
+
+    @field_validator("name", "type", "size", "armor_class", "speed")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field must not be empty.")
+        return value
+
+    @field_validator("challenge_rating")
+    @classmethod
+    def validate_challenge_rating(cls, value: str) -> str:
+        value = value.strip()
+        try:
+            rating = float(Fraction(value))
+        except (ValueError, ZeroDivisionError, OverflowError) as error:
+            raise ValueError("Challenge rating must be a non-negative number or fraction.") from error
+        if rating < 0 or rating == float("inf"):
+            raise ValueError("Challenge rating must be a non-negative number or fraction.")
+        return value
+
+    def as_bestiary_entry(self) -> BestiaryEntry:
+        return BestiaryEntry(
+            slug=self.slug, name=self.name, type=self.type, size=self.size,
+            challenge_rating=self.challenge_rating, cr=float(Fraction(self.challenge_rating)),
+            document__title="Custom", hit_points=self.hit_points,
+        )
 
 
 class BestiaryDisplay(BaseModel):

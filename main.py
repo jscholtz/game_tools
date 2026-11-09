@@ -4,6 +4,7 @@ from pymongo.errors import PyMongoError
 from tab_views.auth_service import load_users, login_user
 from tab_views.bestiary import render_bestiary_tab
 from tab_views.character import render_character_tab, render_dm_character_tab
+from tab_views.custom_bestiary import render_custom_bestiary_tab
 from tab_views.initiative import render_dm_initiative_tab, render_player_initiative_tab
 from tab_views.messages import render_dm_messages_tab, render_player_messages_tab
 from tab_views.notes import render_notes_tab
@@ -80,7 +81,7 @@ def main():
         tab_names.append("Notes")
     tab_names.extend(["Public Board", "Messages with DM", "Initiative Tracker"])
     if role == "dm":
-        tab_names.append("Bestiary")
+        tab_names.extend(["Bestiary", "Custom Bestiary Editor"])
     tabs = iter(st.tabs(tab_names, key="main_tabs", on_change="rerun"))
 
     with next(tabs):
@@ -118,6 +119,10 @@ def main():
         if bestiary_tab.open:
             with bestiary_tab:
                 render_bestiary_tab(principal)
+        custom_bestiary_tab = next(tabs)
+        if custom_bestiary_tab.open:
+            with custom_bestiary_tab:
+                render_custom_bestiary_tab(principal)
 
     if st.sidebar.button("Log out"):
         st.session_state.clear()

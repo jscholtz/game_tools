@@ -8,6 +8,64 @@ placeholder values. Redis host and port can also be overridden there. Keep
 `.env` private; it is ignored by Git. Existing process environment variables
 override values from `.env`.
 
+## Application structure
+
+`main.py` is the Streamlit entry point. It loads login records when a login is
+submitted, handles login and logout, and assembles tabs using the role stored in
+Streamlit session state. The authenticated session also retains the player-name
+list used by DM views, so normal app reruns do not reload login records or
+recheck account membership. A user's login or role changes, and changes to the
+DM's player list, take effect in each session after that session logs out and
+logs in again. The app has no separate page directory: tab rendering and
+supporting modules are in `tab_views/`.
+
+The main interaction path is:
+
+1. `main.py` renders a tab by calling a function in a tab view.
+2. The view handles Streamlit widgets, presentation, and session state.
+3. Service modules apply role and ownership checks, validate operations, and
+   coordinate app behavior.
+4. Storage modules read or write MongoDB or Redis.
+
+### Tabs
+
+| Tab | Player view | DM view |
+| --- | --- | --- |
+| **Character** | View and edit own character details, stats, classes, picture, and private text. | View configured player character cards and edit shared character details. |
+| **Notes** | Create, edit, and delete private notes. | Not shown. |
+| **Public Board** | Read notes and images marked visible to players. | Create, edit, delete, and set note visibility; manage images. |
+| **Messages with DM** | Chat with the DM; conversation refreshes automatically. | View player conversations, unread counts, and send replies. |
+| **Initiative Tracker** | See visible combatants, initiative, and turn status. | Manage combatants, HP, visibility, turn order, and tracker snapshots. |
+| **Bestiary** | Not shown. | Filter creatures, view stat blocks, and add creatures to initiative. |
+
+Tabs are role-dependent: players get **Notes**, while the DM gets **Bestiary**.
+Both roles get the other four tabs.
+
+### Module responsibilities
+
+- `tab_views/character.py`, `notes.py`, `public_board.py`, `messages.py`,
+  `initiative.py`, and `bestiary.py` render their respective tab interfaces.
+- `auth_service.py` loads and checks logins. `principal.py` represents the
+  authenticated account and provides role guards.
+- `character_service.py`, `board_service.py`, `user_data.py`,
+  `initiative_service.py`, and `bestiary_service.py` contain feature operations
+  and access checks. Views call these rather than directly implementing
+  feature rules.
+- `database.py` is the MongoDB access layer. `initiative_store.py` is the Redis
+  and MongoDB storage layer for initiative state.
+- `data_models.py` defines validated records for logins, characters, notes,
+  chats, public-board data, and bestiary entries. `initiative_models.py`
+  defines tracker and combatant records.
+- `config.py` loads `.env` settings and `character_cards.toml`.
+  `message_injection.py` provides the external text-screening client used for
+  chat messages and private notes.
+- `stat_blocks.py` renders Bestiary stat blocks in sandboxed frames.
+
+At the repository root, `pyproject.toml`, `requirements.txt`, and `uv.lock`
+describe the Python project and dependencies. `tests/` contains the bestiary
+data validation test and a manual Redis connectivity check; `bin/` contains
+the ngrok helper script.
+
 DM and player screens use separate service operations. Player initiative
 projections omit hidden combatants and hit points; player board reads return
 only visible notes and images. Character and private-note operations enforce

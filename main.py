@@ -27,12 +27,6 @@ def main():
         layout=page_layout,
     )
 
-    try:
-        users = load_users()
-    except (KeyError, PyMongoError, ValueError) as error:
-        st.error(f"Could not connect to MongoDB or load login records: {error}")
-        return
-
     if st.session_state.logged_in_user is None:
         st.title("D&D Campaign Portal")
         st.subheader("Adventurers' Log In")
@@ -46,10 +40,19 @@ def main():
             submitted = st.form_submit_button("Log in")
 
         if submitted:
+            try:
+                users = load_users()
+            except (KeyError, PyMongoError, ValueError) as error:
+                st.error(f"Could not connect to MongoDB or load login records: {error}")
+                return
+
             user = login_user(username, password, users)
             if user is not None:
                 st.session_state.logged_in_user = username
                 st.session_state.logged_in_role = user.role
+                st.session_state.logged_in_player_names = [
+                    name for name, details in users.items() if details.role == "player"
+                ]
                 st.success(f"Welcome, {username}!")
                 st.rerun()
             else:
@@ -58,46 +61,35 @@ def main():
         return
 
     username = st.session_state.logged_in_user
-    user_details = users.get(username)
-    if user_details is None:
-        st.session_state.clear()
-        st.session_state.login_notice = "This account no longer exists. Please log in again."
-        st.rerun()
-    if st.session_state.get("logged_in_role") != user_details.role:
-        st.session_state.clear()
-        st.session_state.login_notice = "Your account role changed. Please log in again."
-        st.rerun()
-
-    if user_details.role not in ("dm", "player"):
+    role = st.session_state.get("logged_in_role")
+    if role not in ("dm", "player"):
         st.error("This account has an unsupported role.")
         return
-    principal = Principal(username=username, role=user_details.role)
+    player_names = st.session_state.get("logged_in_player_names", [])
+    principal = Principal(username=username, role=role)
 
-    if user_details.role == "dm":
+    if role == "dm":
         st.subheader("Dungeon Master")
     else:
         st.title("D&D Campaign Portal")
         st.subheader(f"Welcome, {username}")
-        st.caption(f"Campaign role: {user_details.role}")
+        st.caption(f"Campaign role: {role}")
 
     tab_names = ["Character"]
-    if user_details.role == "player":
+    if role == "player":
         tab_names.append("Notes")
     tab_names.extend(["Public Board", "Messages with DM", "Initiative Tracker"])
-    if user_details.role == "dm":
+    if role == "dm":
         tab_names.append("Bestiary")
     tabs = iter(st.tabs(tab_names, key="main_tabs", on_change="rerun"))
 
     with next(tabs):
-        if user_details.role == "dm":
-            render_dm_character_tab(
-                principal,
-                [name for name, details in users.items() if details.role == "player"]
-            )
+        if role == "dm":
+            render_dm_character_tab(principal, player_names)
         else:
             render_character_tab(principal)
 
-    if user_details.role == "player":
+    if role == "player":
         with next(tabs):
             render_notes_tab(principal)
 
@@ -110,7 +102,7 @@ def main():
     with next(tabs):
         if principal.role == "dm":
             render_dm_messages_tab(
-                principal, [name for name, details in users.items() if details.role == "player"]
+                principal, player_names
             )
         else:
             render_player_messages_tab(principal)
@@ -121,7 +113,7 @@ def main():
         else:
             render_player_initiative_tab(principal)
 
-    if user_details.role == "dm":
+    if role == "dm":
         bestiary_tab = next(tabs)
         if bestiary_tab.open:
             with bestiary_tab:

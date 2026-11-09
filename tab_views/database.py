@@ -32,6 +32,31 @@ def get_database():
     return get_mongodb_client()[DATABASE_NAME]
 
 
+@st.cache_data(show_spinner=False)
+def load_bestiary_index() -> list[dict[str, Any]]:
+    fields = {
+        "_id": 0,
+        "slug": 1,
+        "name": 1,
+        "type": 1,
+        "size": 1,
+        "challenge_rating": 1,
+        "cr": 1,
+        "document__title": 1,
+    }
+    return list(get_mongodb_client()["creatures"]["basic_list"].find({}, fields))
+
+
+@st.cache_data(show_spinner=False)
+def load_bestiary_display(slug: str) -> dict[str, Any]:
+    display = get_mongodb_client()["creatures"]["display"].find_one(
+        {"slug": slug}, {"_id": 0, "inline": 1, "sizes": 1}
+    )
+    if display is None:
+        raise FileNotFoundError(f"Creature stat block not found: {slug}")
+    return display
+
+
 def get_users() -> dict[str, dict[str, Any]]:
     return {
         document["username"]: document

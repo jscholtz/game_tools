@@ -41,6 +41,13 @@ view. The player view shows an editable initiative bonus, defaulting to +0 when
 not stored. Background, story, and initiative bonus are stored in the player's
 `private_data` document.
 
+The DM-only **Bestiary** searches the `creatures.basic_list` MongoDB collection
+by name, type, challenge rating, size, and source. Filters appear on the left;
+the matching creature selector and stat block appear on the right. Selecting a
+result loads its HTML stat block from `creatures.display` in a sandboxed frame,
+with external resources blocked. Search fields and selected stat blocks are
+cached for the app's lifetime; restart the app to pick up database changes.
+
 The Public Board stores an ordered `notes` list in the `public_data` document
 `public_notes`. Each note contains `header`, `date`, `text`, `visible`, and
 `images`; images are references to separate `public_image:<id>` documents in
@@ -77,8 +84,9 @@ uv run streamlit run main.py
 ```
 
 MongoDB collections used: `logins`, `private_data`, `chats`, `public_data`, and
-`initiative`. The viewer also supports older images in `public_images` when
-that collection is accessible.
+`initiative` in `game_helper`, plus `basic_list` and `display` in `creatures`.
+The viewer also supports older images in `public_images` when that collection
+is accessible.
 
 To manually verify Redis connectivity, run:
 

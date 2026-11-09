@@ -1,59 +1,51 @@
 from copy import deepcopy
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from datetime import datetime, timezone
-from typing import Any
-from uuid import uuid4
 
 import streamlit as st
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-from .database import load_bestiary_display
-from .initiative_store import (
-    load_tracker,
-    load_tracker_default,
-    save_tracker,
-    save_tracker_snapshot,
+from .bestiary_service import get_bestiary_display
+from .initiative_models import InitiativeTracker
+from .initiative_service import (
+    add_combatant as add_combatant_to_tracker,
+    advance_turn,
+    get_dm_tracker,
+    get_dm_tracker_default,
+    get_player_tracker,
+    queue_dm_tracker_save,
+    remove_combatant,
+    reorder_combatants,
+    save_dm_tracker,
+    save_dm_tracker_snapshot,
+    set_combatant_hp,
+    set_combatant_initiative,
+    set_combatant_visibility,
+    toggle_combatant_death,
 )
+from .principal import Principal
 from .stat_blocks import render_stat_block_tab_link
 
 TRACKER_SESSION_KEY = "initiative_tracker"
 TRACKER_SAVE_FUTURES_KEY = "initiative_save_futures"
 TRACKER_SAVE_ERROR_KEY = "initiative_save_error"
 TRACKER_SNAPSHOT_TIME_KEY = "initiative_snapshot_time"
-TRACKER_SAVE_EXECUTOR = ThreadPoolExecutor(
-    max_workers=1, thread_name_prefix="initiative-save"
-)
 
 
-def make_combatant(name: str, initiative: int, hit_points: int) -> dict[str, Any]:
-    return {
-        "id": uuid4().hex,
-        "name": name,
-        "initiative": initiative,
-        "dead": False,
-        "visible": True,
-        "current_hp": hit_points,
-        "max_hp": hit_points,
-    }
-
-
-def get_session_tracker() -> dict[str, Any]:
-    tracker = load_tracker()
+def get_session_tracker(principal: Principal) -> InitiativeTracker:
+    tracker = get_dm_tracker(principal)
     st.session_state[TRACKER_SESSION_KEY] = deepcopy(tracker)
     return deepcopy(tracker)
 
 
-def persist_tracker(tracker: dict[str, Any]) -> None:
-    future = TRACKER_SAVE_EXECUTOR.submit(save_tracker, deepcopy(tracker))
-    future.result()
+def persist_tracker(principal: Principal, tracker: InitiativeTracker) -> None:
+    save_dm_tracker(principal, tracker)
     st.session_state[TRACKER_SESSION_KEY] = deepcopy(tracker)
 
 
-def persist_tracker_async(tracker: dict[str, Any]) -> None:
-    future: Future[None] = TRACKER_SAVE_EXECUTOR.submit(
-        save_tracker, deepcopy(tracker)
-    )
+def persist_tracker_async(principal: Principal, tracker: InitiativeTracker) -> None:
+    future = queue_dm_tracker_save(principal, tracker)
     st.session_state[TRACKER_SESSION_KEY] = deepcopy(tracker)
     st.session_state.setdefault(TRACKER_SAVE_FUTURES_KEY, []).append(future)
 
@@ -66,7 +58,7 @@ def show_tracker_save_status() -> None:
         future = futures.pop(0)
         try:
             future.result()
-        except (KeyError, PyMongoError, RedisError, ValueError) as error:
+        except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
             st.session_state[TRACKER_SAVE_ERROR_KEY] = str(error)
         else:
             st.session_state.pop(TRACKER_SAVE_ERROR_KEY, None)
@@ -77,16 +69,14 @@ def show_tracker_save_status() -> None:
 
 
 @st.dialog("Reset initiative tracker?")
-def confirm_reset_tracker() -> None:
+def confirm_reset_tracker(principal: Principal) -> None:
     st.warning("This will replace the current tracker with its saved default state.")
     confirm_column, cancel_column = st.columns(2)
     if confirm_column.button("Reset tracker", type="primary"):
         try:
-            default_tracker = load_tracker_default()
-            if not isinstance(default_tracker, dict):
-                raise ValueError("No valid default initiative tracker is configured.")
-            persist_tracker(deepcopy(default_tracker))
-        except (KeyError, PyMongoError, RedisError, ValueError) as error:
+            default_tracker = get_dm_tracker_default(principal)
+            persist_tracker(principal, deepcopy(default_tracker))
+        except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
             st.error(f"Could not reset initiative tracker: {error}")
         else:
             st.rerun(scope="app")
@@ -95,15 +85,15 @@ def confirm_reset_tracker() -> None:
 
 
 @st.dialog("Change initiative")
-def edit_initiative(combatant_id: str) -> None:
+def edit_initiative(principal: Principal, combatant_id: str) -> None:
     try:
-        tracker = get_session_tracker()
-    except (KeyError, PyMongoError, RedisError, ValueError) as error:
+        tracker = get_session_tracker(principal)
+    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
         st.error(f"Could not load initiative tracker: {error}")
         return
 
     actor = next(
-        (item for item in tracker["combatants"] if item["id"] == combatant_id),
+        (item for item in tracker.combatants if item.id == combatant_id),
         None,
     )
     if actor is None:
@@ -112,53 +102,41 @@ def edit_initiative(combatant_id: str) -> None:
 
     with st.form(f"edit_initiative_{combatant_id}"):
         initiative = st.number_input(
-            "Initiative", value=actor["initiative"], step=1
+            "Initiative", value=actor.initiative, step=1
         )
         save = st.form_submit_button("Save")
 
     if save:
-        actor["initiative"] = int(initiative)
         try:
-            persist_tracker(tracker)
-        except (KeyError, PyMongoError, RedisError, ValueError) as error:
+            set_combatant_initiative(principal, tracker, combatant_id, int(initiative))
+            persist_tracker(principal, tracker)
+        except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
             st.error(f"Could not update initiative: {error}")
         else:
             st.rerun(scope="app")
 
 
-def save_combatant_hp(combatant_id: str, current_hp: int) -> None:
+def save_combatant_hp(principal: Principal, combatant_id: str, current_hp: int) -> None:
     try:
-        tracker = get_session_tracker()
-        actor = next(
-            item for item in tracker["combatants"] if item["id"] == combatant_id
-        )
-        actor["current_hp"] = min(current_hp, actor["max_hp"])
-        persist_tracker(tracker)
-    except (KeyError, PyMongoError, RedisError, ValueError, StopIteration) as error:
+        tracker = get_session_tracker(principal)
+        set_combatant_hp(principal, tracker, combatant_id, current_hp)
+        persist_tracker(principal, tracker)
+    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
         st.error(f"Could not update hit points: {error}")
     else:
         st.rerun(scope="fragment")
 
 
-def save_combatant_visibility(combatant_id: str, checkbox_key: str) -> None:
+def save_combatant_visibility(principal: Principal, combatant_id: str, checkbox_key: str) -> None:
     try:
-        tracker = get_session_tracker()
-        actor = next(
-            item for item in tracker["combatants"] if item["id"] == combatant_id
-        )
-        actor["visible"] = st.session_state[checkbox_key]
-        persist_tracker(tracker)
-    except (KeyError, PyMongoError, RedisError, ValueError, StopIteration) as error:
+        tracker = get_session_tracker(principal)
+        set_combatant_visibility(principal, tracker, combatant_id, st.session_state[checkbox_key])
+        persist_tracker(principal, tracker)
+    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
         st.error(f"Could not update combatant visibility: {error}")
 
 
-@st.fragment(run_every=1)
-def render_initiative_tab(is_dm: bool = True) -> None:
-    if is_dm:
-        show_tracker_save_status()
-        snapshot_time = st.session_state.get(TRACKER_SNAPSHOT_TIME_KEY)
-        if snapshot_time:
-            st.caption(f"MongoDB snapshot saved at {snapshot_time} UTC")
+def _render_tracker_style() -> None:
     st.markdown(
         """
         <style>
@@ -177,16 +155,51 @@ def render_initiative_tab(is_dm: bool = True) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+@st.fragment(run_every=1)
+def render_player_initiative_tab(principal: Principal) -> None:
+    _render_tracker_style()
     try:
-        tracker = get_session_tracker()
-    except (KeyError, PyMongoError, RedisError, ValueError) as error:
+        tracker = get_player_tracker(principal)
+    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
         st.error(f"Could not load initiative tracker: {error}")
         return
 
-    combatants = tracker["combatants"]
-    current_turn_id = tracker["current_turn_id"]
+    if not tracker.combatants:
+        st.caption("No combatants yet.")
+    for actor in tracker.combatants:
+        is_current = actor.id == tracker.current_turn_id and not actor.dead
+        container_key = (
+            f"current-combatant-{actor.id}" if is_current else f"combatant-{actor.id}"
+        )
+        with st.container(border=True, key=container_key):
+            name_column, initiative_column = st.columns([4, 1.2])
+            name_column.markdown(
+                f"**{actor.name}**" + (" — DEAD" if actor.dead else "")
+            )
+            initiative_column.markdown(f"**Initiative:** {actor.initiative}")
+            if actor.dead:
+                st.caption("Combatant is defeated.")
 
-    if is_dm:
+
+@st.fragment(run_every=1)
+def render_dm_initiative_tab(principal: Principal) -> None:
+    show_tracker_save_status()
+    snapshot_time = st.session_state.get(TRACKER_SNAPSHOT_TIME_KEY)
+    if snapshot_time:
+        st.caption(f"MongoDB snapshot saved at {snapshot_time} UTC")
+    _render_tracker_style()
+    try:
+        tracker = get_session_tracker(principal)
+    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
+        st.error(f"Could not load initiative tracker: {error}")
+        return
+
+    combatants = tracker.combatants
+    current_turn_id = tracker.current_turn_id
+
+    if principal.role == "dm":
         with st.form("add_combatant", clear_on_submit=True):
             name_column, initiative_column, hp_column, add_column = st.columns([5, 2, 2, 1])
             name = name_column.text_input("Character or monster")
@@ -201,42 +214,27 @@ def render_initiative_tab(is_dm: bool = True) -> None:
             )
 
         if add_combatant:
-            name = name.strip()
-            if not name:
-                st.error("Enter a character or monster name.")
+            try:
+                add_combatant_to_tracker(principal, tracker, name, int(initiative), int(hit_points))
+                persist_tracker(principal, tracker)
+            except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
+                st.error(f"Could not save initiative tracker: {error}")
             else:
-                new_combatant = make_combatant(name, int(initiative), int(hit_points))
-                combatants.append(new_combatant)
-                try:
-                    persist_tracker(tracker)
-                except (KeyError, PyMongoError, RedisError, ValueError) as error:
-                    st.error(f"Could not save initiative tracker: {error}")
-                else:
-                    st.rerun(scope="fragment")
+                st.rerun(scope="fragment")
 
-    displayed_combatants = combatants if is_dm else [
-        actor for actor in combatants if actor["visible"]
-    ]
+    displayed_combatants = combatants
     if not displayed_combatants:
         st.caption("No combatants yet.")
 
-    if is_dm:
-        living_combatants = [actor for actor in combatants if not actor["dead"]]
+    if principal.role == "dm":
+        living_combatants = [actor for actor in combatants if not actor.dead]
         with st.container(horizontal=True):
             with st.container(key="initiative-next-turn", width="content"):
                 if st.button("Next turn", disabled=not living_combatants, type="primary"):
-                    current_index = next(
-                        (
-                            index for index, actor in enumerate(living_combatants)
-                            if actor["id"] == current_turn_id
-                        ),
-                        -1,
-                    )
-                    next_actor = living_combatants[(current_index + 1) % len(living_combatants)]
-                    tracker["current_turn_id"] = next_actor["id"]
                     try:
-                        persist_tracker_async(tracker)
-                    except (KeyError, PyMongoError, RedisError, RuntimeError, ValueError) as error:
+                        advance_turn(principal, tracker)
+                        persist_tracker_async(principal, tracker)
+                    except (KeyError, PermissionError, PyMongoError, RedisError, RuntimeError, ValueError) as error:
                         st.error(f"Could not advance initiative: {error}")
                     else:
                         st.rerun(scope="fragment")
@@ -245,13 +243,13 @@ def render_initiative_tab(is_dm: bool = True) -> None:
                 reorder = st.button("Reorder by initiative", disabled=not combatants)
 
             if st.button("Reset to default"):
-                confirm_reset_tracker()
+                confirm_reset_tracker(principal)
 
             if st.button("Save snapshot", help="Save current tracker state to MongoDB"):
                 try:
-                    persist_tracker(tracker)
-                    save_tracker_snapshot(tracker)
-                except (KeyError, PyMongoError, RedisError, ValueError) as error:
+                    persist_tracker(principal, tracker)
+                    save_dm_tracker_snapshot(principal, tracker)
+                except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
                     st.error(f"Could not save tracker snapshot to MongoDB: {error}")
                 else:
                     st.session_state[TRACKER_SNAPSHOT_TIME_KEY] = datetime.now(
@@ -259,23 +257,23 @@ def render_initiative_tab(is_dm: bool = True) -> None:
                     ).strftime("%Y-%m-%d %H:%M:%S")
 
         if reorder:
-            combatants.sort(key=lambda actor: actor["initiative"], reverse=True)
             try:
-                persist_tracker(tracker)
-            except (KeyError, PyMongoError, RedisError, ValueError) as error:
+                reorder_combatants(principal, tracker)
+                persist_tracker(principal, tracker)
+            except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
                 st.error(f"Could not reorder initiative: {error}")
             else:
                 st.rerun(scope="fragment")
 
     for actor in displayed_combatants:
-        is_current = actor["id"] == current_turn_id and not actor["dead"]
+        is_current = actor.id == current_turn_id and not actor.dead
         container_key = (
-            f"current-combatant-{actor['id']}"
+            f"current-combatant-{actor.id}"
             if is_current
-            else f"combatant-{actor['id']}"
+            else f"combatant-{actor.id}"
         )
         with st.container(border=True, key=container_key):
-            if is_dm:
+            if principal.role == "dm":
                 (
                     name_column,
                     initiative_column,
@@ -285,83 +283,71 @@ def render_initiative_tab(is_dm: bool = True) -> None:
                 with name_column:
                     with st.container(horizontal=True, gap="small", vertical_alignment="top"):
                         st.markdown(
-                            f"**{actor['name']}** (max hitpoints: {actor['max_hp']})"
-                            + (" — DEAD" if actor["dead"] else ""),
+                            f"**{actor.name}** (max hitpoints: {actor.max_hp})"
+                            + (" — DEAD" if actor.dead else ""),
                             width="content",
                         )
-                        slug = actor.get("creature_slug")
+                        slug = actor.creature_slug
                         if slug is not None:
                             if not isinstance(slug, str) or not slug:
                                 st.error("Creature identifier is invalid.")
                             else:
                                 try:
-                                    display = load_bestiary_display(slug)
-                                except (FileNotFoundError, KeyError, PyMongoError) as error:
+                                    display = get_bestiary_display(principal, slug)
+                                except (FileNotFoundError, KeyError, PermissionError, PyMongoError, ValueError) as error:
                                     st.error(f"Could not load creature stat block: {error}")
                                 else:
-                                    render_stat_block_tab_link(display, actor["name"])
-                    visibility_key = f"visible_{actor['id']}"
-                    st.session_state[visibility_key] = actor["visible"]
+                                    render_stat_block_tab_link(display, actor.name)
+                    visibility_key = f"visible_{actor.id}"
+                    st.session_state[visibility_key] = actor.visible
                     st.checkbox(
                         "Visible",
                         key=visibility_key,
                         on_change=save_combatant_visibility,
-                        args=(actor["id"], visibility_key),
+                        args=(principal, actor.id, visibility_key),
                         help="Show this combatant to players.",
                     )
-                initiative_column.markdown(f"**Initiative:** {actor['initiative']}")
-                hp_key = f"current_hp_{actor['id']}"
-                if st.session_state.get(hp_key, actor["current_hp"]) > actor["max_hp"]:
-                    st.session_state[hp_key] = actor["max_hp"]
-                st.session_state.setdefault(hp_key, actor["current_hp"])
+                initiative_column.markdown(f"**Initiative:** {actor.initiative}")
+                hp_key = f"current_hp_{actor.id}"
+                if st.session_state.get(hp_key, actor.current_hp) > actor.max_hp:
+                    st.session_state[hp_key] = actor.max_hp
+                st.session_state.setdefault(hp_key, actor.current_hp)
                 hp_value_column.number_input(
                     "HP",
                     min_value=0,
-                    max_value=actor["max_hp"],
+                    max_value=actor.max_hp,
                     step=1,
                     key=hp_key,
                     label_visibility="collapsed",
                 )
                 with buttons_column.container(horizontal=True, gap="small"):
                     if st.button(
-                        "❤️", help="Save hit points", key=f"hp_save_{actor['id']}"
+                        "❤️", help="Save hit points", key=f"hp_save_{actor.id}"
                     ):
-                        save_combatant_hp(actor["id"], st.session_state[hp_key])
+                        save_combatant_hp(principal, actor.id, st.session_state[hp_key])
 
-                    if st.button("🎲", help="Change initiative", key=f"change_{actor['id']}"):
-                        edit_initiative(actor["id"])
+                    if st.button("🎲", help="Change initiative", key=f"change_{actor.id}"):
+                        edit_initiative(principal, actor.id)
 
                     if st.button(
                         "💀",
-                        help="Revive" if actor["dead"] else "Make dead",
-                        key=f"dead_{actor['id']}",
+                        help="Revive" if actor.dead else "Make dead",
+                        key=f"dead_{actor.id}",
                     ):
-                        actor["dead"] = not actor["dead"]
-                        if actor["dead"] and current_turn_id == actor["id"]:
-                            tracker["current_turn_id"] = None
                         try:
-                            persist_tracker(tracker)
-                        except (KeyError, PyMongoError, RedisError, ValueError) as error:
+                            toggle_combatant_death(principal, tracker, actor.id)
+                            persist_tracker(principal, tracker)
+                        except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
                             st.error(f"Could not update combatant status: {error}")
                         else:
                             st.rerun(scope="fragment")
 
-                    with st.container(key=f"initiative-delete-{actor['id']}", width="content"):
-                        if st.button("❌", help="Delete", key=f"delete_{actor['id']}"):
-                            combatants.remove(actor)
-                            if current_turn_id == actor["id"]:
-                                tracker["current_turn_id"] = None
+                    with st.container(key=f"initiative-delete-{actor.id}", width="content"):
+                        if st.button("❌", help="Delete", key=f"delete_{actor.id}"):
                             try:
-                                persist_tracker(tracker)
-                            except (KeyError, PyMongoError, RedisError, ValueError) as error:
+                                remove_combatant(principal, tracker, actor.id)
+                                persist_tracker(principal, tracker)
+                            except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
                                 st.error(f"Could not delete combatant: {error}")
                             else:
                                 st.rerun(scope="fragment")
-            else:
-                name_column, initiative_column = st.columns([4, 1.2])
-                name_column.markdown(
-                    f"**{actor['name']}**" + (" — DEAD" if actor["dead"] else "")
-                )
-                initiative_column.markdown(f"**Initiative:** {actor['initiative']}")
-                if actor["dead"]:
-                    st.caption("Combatant is defeated.")

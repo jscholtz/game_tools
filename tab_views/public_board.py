@@ -6,17 +6,20 @@ import streamlit as st
 from bson.errors import InvalidDocument
 from pymongo.errors import PyMongoError
 
-from .database import (
-    PublicNote,
-    create_public_notes,
-    load_public_image,
-    load_public_notes,
-    save_public_image,
-    save_public_notes,
+from .board_service import (
+    add_board_image,
+    create_board,
+    get_board_image,
+    get_dm_board,
+    get_player_board,
+    save_board,
 )
+from .database import PublicNote
+from .principal import Principal
 
 
-def start_editor(notes: list[PublicNote], revision: str, index: int | None) -> None:
+def start_editor(principal: Principal, notes: list[PublicNote], revision: str, index: int | None) -> None:
+    principal.require_dm()
     note: PublicNote = (
         {
             "header": "",
@@ -39,7 +42,8 @@ def start_editor(notes: list[PublicNote], revision: str, index: int | None) -> N
     st.rerun()
 
 
-def render_editor() -> None:
+def render_editor(principal: Principal) -> None:
+    principal.require_dm()
     editor = st.session_state["public_note_editor"]
     note = editor["note"]
     key = editor["key"]
@@ -53,8 +57,8 @@ def render_editor() -> None:
         removed = []
         for index, image in enumerate(note["images"]):
             try:
-                name, content = load_public_image(image)
-            except (FileNotFoundError, PyMongoError, ValueError) as error:
+                name, content = get_board_image(principal, image)
+            except (FileNotFoundError, PermissionError, PyMongoError, ValueError) as error:
                 st.error(f"Could not load image {index + 1}: {error}")
                 name = f"Image {index + 1}"
             else:
@@ -101,10 +105,10 @@ def render_editor() -> None:
     try:
         if not delete:
             updated["images"].extend(
-                save_public_image(upload.name, upload.getvalue()) for upload in uploads
+                add_board_image(principal, upload.name, upload.getvalue()) for upload in uploads
             )
-        saved = save_public_notes(notes, editor["revision"])
-    except (PyMongoError, InvalidDocument, ValueError) as error:
+        saved = save_board(principal, notes, editor["revision"])
+    except (PermissionError, PyMongoError, InvalidDocument, ValueError) as error:
         st.error(f"Could not save public note: {error}")
     else:
         if saved:
@@ -116,18 +120,18 @@ def render_editor() -> None:
 
 
 @st.fragment(run_every=10)
-def render_public_view(is_dm: bool) -> None:
+def render_dm_public_view(principal: Principal) -> None:
     try:
-        board = load_public_notes()
-    except (PyMongoError, ValueError) as error:
+        board = get_dm_board(principal)
+    except (PermissionError, PyMongoError, ValueError) as error:
         st.error(f"Could not load public notes: {error}")
         return
     if board is None:
         st.info("No public notes yet.")
-        if is_dm and st.button("Create public notes"):
+        if st.button("Create public notes"):
             try:
-                created = create_public_notes([])
-            except PyMongoError as error:
+                created = create_board(principal)
+            except (PermissionError, PyMongoError) as error:
                 st.error(f"Could not create public notes: {error}")
             else:
                 if not created:
@@ -135,38 +139,57 @@ def render_public_view(is_dm: bool) -> None:
                 st.rerun()
         return
     notes, revision = board
-    if is_dm and st.button("+ New public note"):
-        start_editor(notes, revision, None)
-    if not any(is_dm or note["visible"] for note in notes):
+    if st.button("+ New public note"):
+        start_editor(principal, notes, revision, None)
+    if not notes:
         st.info("No public notes yet.")
     for index, note in enumerate(notes):
-        if not is_dm and not note["visible"]:
-            continue
         label = f"{note['date']} — {note['header']}" if note["date"] else note["header"]
         with st.expander(label):
-            if is_dm:
-                if not note["visible"]:
-                    st.caption("Hidden from players")
-                if st.button("Edit", key=f"edit_public_note_{index}", icon=":material/edit:"):
-                    start_editor(notes, revision, index)
+            if not note["visible"]:
+                st.caption("Hidden from players")
+            if st.button("Edit", key=f"edit_public_note_{index}", icon=":material/edit:"):
+                start_editor(principal, notes, revision, index)
             st.markdown(note["text"])
             for image_index, image in enumerate(note["images"]):
                 try:
-                    name, content = load_public_image(image)
-                except (FileNotFoundError, PyMongoError, ValueError) as error:
+                    name, content = get_board_image(principal, image)
+                except (FileNotFoundError, PermissionError, PyMongoError, ValueError) as error:
                     st.error(f"Could not load image {image_index + 1}: {error}")
                 else:
                     st.image(content, caption=name, width=600)
 
 
 @st.fragment
-def render_public_editor() -> None:
-    render_editor()
+def render_public_editor(principal: Principal) -> None:
+    render_editor(principal)
 
 
-def render_public_tab(is_dm: bool = False) -> None:
+def render_dm_public_tab(principal: Principal) -> None:
     editor = st.session_state.get("public_note_editor")
-    if is_dm and editor is not None and editor["owner"] == st.session_state.get("logged_in_user"):
-        render_public_editor()
+    if editor is not None and editor["owner"] == principal.username:
+        render_public_editor(principal)
     else:
-        render_public_view(is_dm)
+        render_dm_public_view(principal)
+
+
+@st.fragment(run_every=10)
+def render_player_public_tab(principal: Principal) -> None:
+    try:
+        notes = get_player_board(principal)
+    except (PermissionError, PyMongoError, ValueError) as error:
+        st.error(f"Could not load public notes: {error}")
+        return
+    if not notes:
+        st.info("No public notes yet.")
+    for note in notes:
+        label = f"{note['date']} — {note['header']}" if note["date"] else note["header"]
+        with st.expander(label):
+            st.markdown(note["text"])
+            for image_index, image in enumerate(note["images"]):
+                try:
+                    name, content = get_board_image(principal, image)
+                except (FileNotFoundError, PermissionError, PyMongoError, ValueError) as error:
+                    st.error(f"Could not load image {image_index + 1}: {error}")
+                else:
+                    st.image(content, caption=name, width=600)

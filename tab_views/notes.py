@@ -7,6 +7,7 @@ from pymongo.errors import PyMongoError
 from typesafe_sdk import TypeSafeError
 
 from .message_injection import get_message_injection_checker
+from .principal import Principal
 from .user_data import delete_user_note, load_user_notes, save_user_note
 
 LOCAL_TZ = ZoneInfo("Europe/Amsterdam")
@@ -33,7 +34,7 @@ def _stop_editing(note_id: str) -> None:
     st.session_state.pop(_text_key(note_id), None)
 
 
-def _save(username: str, note_id: str) -> bool:
+def _save(principal: Principal, note_id: str) -> bool:
     text = st.session_state.get(_text_key(note_id), "")
     try:
         is_injection = get_message_injection_checker().check(text)
@@ -44,24 +45,24 @@ def _save(username: str, note_id: str) -> bool:
         st.toast("No, no, no...!")
         return False
     try:
-        save_user_note(username, note_id, text)
-    except (PyMongoError, ValueError, FileNotFoundError) as error:
+        save_user_note(principal, note_id, text)
+    except (PermissionError, PyMongoError, ValueError, FileNotFoundError) as error:
         st.error(f"Could not save note: {error}")
         return False
     return True
 
 
-def _delete(username: str, note_id: str, is_draft: bool) -> bool:
+def _delete(principal: Principal, note_id: str, is_draft: bool) -> bool:
     if not is_draft:
         try:
-            delete_user_note(username, note_id)
-        except (PyMongoError, FileNotFoundError) as error:
+            delete_user_note(principal, note_id)
+        except (PermissionError, PyMongoError, FileNotFoundError) as error:
             st.error(f"Could not delete note: {error}")
             return False
     return True
 
 
-def _render_note(username: str, note: dict, is_draft: bool) -> None:
+def _render_note(principal: Principal, note: dict, is_draft: bool) -> None:
     note_id = note["id"]
     editing = is_draft or note_id in st.session_state[EDITING_KEY]
     changed = False
@@ -76,7 +77,7 @@ def _render_note(username: str, note: dict, is_draft: bool) -> None:
         with buttons_column, st.container(horizontal=True, horizontal_alignment="right"):
             if editing:
                 if st.button("Save", key=f"save_{note_id}"):
-                    if _save(username, note_id):
+                    if _save(principal, note_id):
                         _stop_editing(note_id)
                         changed = True
                 if st.button("Cancel", key=f"cancel_{note_id}"):
@@ -91,7 +92,7 @@ def _render_note(username: str, note: dict, is_draft: bool) -> None:
             if st.button(
                 "", icon=":material/delete:", key=f"trash_{note_id}", help="Trash"
             ):
-                if _delete(username, note_id, is_draft):
+                if _delete(principal, note_id, is_draft):
                     _stop_editing(note_id)
                     changed = True
 
@@ -112,7 +113,7 @@ def _render_note(username: str, note: dict, is_draft: bool) -> None:
                 st.markdown(note.get("text", ""))
 
 
-def render_notes_tab(username: str):
+def render_notes_tab(principal: Principal):
     st.session_state.setdefault(DRAFTS_KEY, [])
     st.session_state.setdefault(EDITING_KEY, set())
 
@@ -120,16 +121,16 @@ def render_notes_tab(username: str):
         st.session_state[DRAFTS_KEY].insert(0, uuid.uuid4().hex)
 
     try:
-        notes = load_user_notes(username)
+        notes = load_user_notes(principal)
     except FileNotFoundError:
-        st.error(f"User data not found for {username}.")
+        st.error(f"User data not found for {principal.username}.")
         return
-    except PyMongoError as error:
+    except (PermissionError, PyMongoError) as error:
         st.error(f"Could not load notes: {error}")
         return
 
     for note_id in list(st.session_state[DRAFTS_KEY]):
-        _render_note(username, {"id": note_id, "text": ""}, is_draft=True)
+        _render_note(principal, {"id": note_id, "text": ""}, is_draft=True)
 
     notes.sort(key=_local_datetime, reverse=True)
     current_day = None
@@ -138,4 +139,4 @@ def render_notes_tab(username: str):
         if day != current_day:
             current_day = day
             st.subheader(day.strftime("%A %d %B %Y"))
-        _render_note(username, note, is_draft=False)
+        _render_note(principal, note, is_draft=False)

@@ -8,6 +8,13 @@ placeholder values. Redis host and port can also be overridden there. Keep
 `.env` private; it is ignored by Git. Existing process environment variables
 override values from `.env`.
 
+DM and player screens use separate service operations. Player initiative
+projections omit hidden combatants and hit points; player board reads return
+only visible notes and images. Character and private-note operations enforce
+ownership, and DM character edits are limited to shared character fields.
+These checks use the authenticated server-side session principal; storage
+modules remain internal to the application, not independently authenticated APIs.
+
 On first initiative load, if Redis has no tracker state, the app copies the
 saved tracker and default from MongoDB into Redis. Redis holds live tracker
 state. Use the DM's **Save snapshot** button to save the current state to

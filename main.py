@@ -6,10 +6,12 @@ from pymongo.errors import PyMongoError
 from tab_views.bestiary import render_bestiary_tab
 from tab_views.character import render_character_tab, render_dm_character_tab
 from tab_views.database import get_users
-from tab_views.initiative import render_initiative_tab
-from tab_views.messages import render_messages_tab
+from tab_views.initiative import render_dm_initiative_tab, render_player_initiative_tab
+from tab_views.messages import render_dm_messages_tab, render_player_messages_tab
 from tab_views.notes import render_notes_tab
-from tab_views.public_board import render_public_tab
+from tab_views.principal import Principal
+from tab_views.public_board import render_dm_public_tab, render_player_public_tab
+
 
 def login_user(username: str, password: str, users: dict):
     user = users.get(username)
@@ -44,6 +46,9 @@ def main():
     if st.session_state.logged_in_user is None:
         st.title("D&D Campaign Portal")
         st.subheader("Adventurers' Log In")
+        notice = st.session_state.pop("login_notice", None)
+        if notice:
+            st.warning(notice)
 
         with st.form("login_form", clear_on_submit=True):
             username = st.text_input("Username")
@@ -65,13 +70,18 @@ def main():
     username = st.session_state.logged_in_user
     user_details = users.get(username)
     if user_details is None:
-        st.session_state.logged_in_user = None
-        st.session_state.logged_in_role = None
-        st.error("This account no longer exists. Please log in again.")
-        return
-    if st.session_state.get("logged_in_role") != user_details["role"]:
-        st.session_state.logged_in_role = user_details["role"]
+        st.session_state.clear()
+        st.session_state.login_notice = "This account no longer exists. Please log in again."
         st.rerun()
+    if st.session_state.get("logged_in_role") != user_details["role"]:
+        st.session_state.clear()
+        st.session_state.login_notice = "Your account role changed. Please log in again."
+        st.rerun()
+
+    if user_details["role"] not in ("dm", "player"):
+        st.error("This account has an unsupported role.")
+        return
+    principal = Principal(username=username, role=user_details["role"])
 
     if user_details["role"] == "dm":
         st.subheader("Dungeon Master")
@@ -91,37 +101,44 @@ def main():
     with next(tabs):
         if user_details["role"] == "dm":
             render_dm_character_tab(
+                principal,
                 [name for name, details in users.items() if details["role"] == "player"]
             )
         else:
-            render_character_tab(username)
+            render_character_tab(principal)
 
     if user_details["role"] == "player":
         with next(tabs):
-            render_notes_tab(username)
+            render_notes_tab(principal)
 
     with next(tabs):
-        render_public_tab(is_dm=user_details["role"] == "dm")
+        if principal.role == "dm":
+            render_dm_public_tab(principal)
+        else:
+            render_player_public_tab(principal)
 
     with next(tabs):
-        render_messages_tab(
-            username,
-            user_details["role"] == "dm",
-            users,
-        )
+        if principal.role == "dm":
+            render_dm_messages_tab(
+                principal, [name for name, details in users.items() if details["role"] == "player"]
+            )
+        else:
+            render_player_messages_tab(principal)
 
     with next(tabs):
-        render_initiative_tab(is_dm=user_details["role"] == "dm")
+        if principal.role == "dm":
+            render_dm_initiative_tab(principal)
+        else:
+            render_player_initiative_tab(principal)
 
     if user_details["role"] == "dm":
         bestiary_tab = next(tabs)
         if bestiary_tab.open:
             with bestiary_tab:
-                render_bestiary_tab()
+                render_bestiary_tab(principal)
 
     if st.sidebar.button("Log out"):
-        st.session_state.logged_in_user = None
-        st.session_state.logged_in_role = None
+        st.session_state.clear()
         st.rerun()
 
 

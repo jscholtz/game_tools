@@ -2,20 +2,21 @@ import streamlit as st
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-from .database import load_bestiary_display, load_bestiary_index
-from .initiative import get_session_tracker, make_combatant, persist_tracker
+from .bestiary_service import get_bestiary_display, get_bestiary_index
+from .initiative_service import add_bestiary_combatant
+from .principal import Principal
 from .stat_blocks import render_stat_block
 
 
-def render_bestiary_tab() -> None:
-    if st.session_state.get("logged_in_role") != "dm":
+def render_bestiary_tab(principal: Principal) -> None:
+    if principal.role != "dm":
         st.error("Only the DM can access the bestiary.")
         return
 
     st.header("Bestiary")
     try:
-        creatures = load_bestiary_index()
-    except (KeyError, PyMongoError) as error:
+        creatures = get_bestiary_index(principal)
+    except (KeyError, PermissionError, PyMongoError) as error:
         st.error(f"Could not load bestiary: {error}")
         return
 
@@ -84,20 +85,17 @@ def render_bestiary_tab() -> None:
                     st.error("Enter a name for the combatant.")
                 else:
                     try:
-                        tracker = get_session_tracker()
-                        combatant = make_combatant(combatant_name, int(initiative), hit_points)
-                        combatant.creature_slug = selected
-                        combatant.visible = False
-                        tracker.combatants.append(combatant)
-                        persist_tracker(tracker)
-                    except (KeyError, PyMongoError, RedisError, ValueError) as error:
+                        add_bestiary_combatant(
+                            principal, combatant_name, int(initiative), hit_points, selected
+                        )
+                    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
                         st.error(f"Could not add creature to initiative: {error}")
                     else:
                         st.success(f"{combatant_name} added to initiative.")
 
         try:
-            display = load_bestiary_display(selected)
-        except (FileNotFoundError, KeyError, PyMongoError) as error:
+            display = get_bestiary_display(principal, selected)
+        except (FileNotFoundError, KeyError, PermissionError, PyMongoError) as error:
             st.error(f"Could not load creature: {error}")
             return
         render_stat_block(display)

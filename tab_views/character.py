@@ -9,12 +9,13 @@ from PIL import Image, UnidentifiedImageError
 from pymongo.errors import PyMongoError
 
 from .config import load_character_card_players
-from .database import (
-    load_character_cards,
-    load_dm_unread_counts,
-    load_private_data,
-    save_character_card,
+from .character_service import (
+    get_character,
+    get_dm_character_cards,
+    get_dm_unread_counts,
+    update_character,
 )
+from .principal import Principal
 
 CARD_STATS = (
     ("passive_perception", "Passive perception"),
@@ -117,17 +118,12 @@ def _render_character_details(data: dict) -> None:
 
 
 @st.fragment
-def _edit_character_card(username: str, *, is_dm: bool) -> None:
-    role = st.session_state.get("logged_in_role")
-    if (is_dm and role != "dm") or (
-        not is_dm and (role != "player" or st.session_state.get("logged_in_user") != username)
-    ):
-        st.error("You can only edit your own character.")
-        return
+def _edit_character_card(principal: Principal, username: str) -> None:
+    is_dm = principal.role == "dm"
     edit_key = "editing_character_card" if is_dm else "editing_player_character"
     try:
-        data = load_private_data(username)
-    except (FileNotFoundError, PyMongoError) as error:
+        data = get_character(principal, username)
+    except (FileNotFoundError, PermissionError, PyMongoError) as error:
         st.error(f"Could not load character data: {error}")
         if st.button("Back to characters"):
             st.session_state.pop(edit_key, None)
@@ -293,8 +289,8 @@ def _edit_character_card(username: str, *, is_dm: bool) -> None:
     elif remove_portrait:
         removed.append("portrait")
     try:
-        save_character_card(username, fields, removed)
-    except (FileNotFoundError, PyMongoError, InvalidDocument) as error:
+        update_character(principal, username, fields, removed)
+    except (FileNotFoundError, PermissionError, PyMongoError, InvalidDocument) as error:
         st.error(f"Could not save character data: {error}")
     else:
         st.session_state.pop(edit_key, None)
@@ -303,11 +299,11 @@ def _edit_character_card(username: str, *, is_dm: bool) -> None:
 
 
 @st.fragment(run_every=5)
-def _render_dm_characters(player_names: list[str]) -> None:
+def _render_dm_characters(principal: Principal, player_names: list[str]) -> None:
     try:
-        characters = load_character_cards(player_names)
-        unread = load_dm_unread_counts(player_names)
-    except PyMongoError as error:
+        characters = get_dm_character_cards(principal, player_names)
+        unread = get_dm_unread_counts(principal, player_names)
+    except (PermissionError, PyMongoError) as error:
         st.error(f"Could not load characters or unread messages: {error}")
         return
     if not player_names:
@@ -337,7 +333,7 @@ def _render_dm_characters(player_names: list[str]) -> None:
                 st.rerun()
 
 
-def render_dm_character_tab(player_names: list[str]) -> None:
+def render_dm_character_tab(principal: Principal, player_names: list[str]) -> None:
     if "character_card_players" not in st.session_state:
         try:
             st.session_state["character_card_players"] = load_character_card_players()
@@ -360,21 +356,22 @@ def render_dm_character_tab(player_names: list[str]) -> None:
 
     username = st.session_state.get("editing_character_card")
     if username in selected_players:
-        _edit_character_card(username, is_dm=True)
+        _edit_character_card(principal, username)
     else:
-        _render_dm_characters(selected_players)
+        _render_dm_characters(principal, selected_players)
 
 
-def render_character_tab(username: str):
+def render_character_tab(principal: Principal):
+    username = principal.username
     if st.session_state.get("editing_player_character") == username:
-        _edit_character_card(username, is_dm=False)
+        _edit_character_card(principal, username)
         return
 
     try:
-        user_data = load_private_data(username)
+        user_data = get_character(principal, username)
     except FileNotFoundError:
         st.error(f"User data not found for {username}.")
-    except PyMongoError as error:
+    except (PermissionError, PyMongoError) as error:
         st.error(f"Could not load character data: {error}")
     else:
         if st.button("Edit character", icon=":material/edit:"):

@@ -82,6 +82,7 @@ def main():
     tab_names.extend(["Public Board", "Messages with DM", "Initiative Tracker"])
     if role == "dm":
         tab_names.extend(["Bestiary", "Custom Bestiary Editor"])
+    tab_names.append("Credits")
     tabs = iter(st.tabs(tab_names, key="main_tabs", on_change="rerun"))
 
     with next(tabs):
@@ -123,6 +124,18 @@ def main():
         if custom_bestiary_tab.open:
             with custom_bestiary_tab:
                 render_custom_bestiary_tab(principal)
+
+    credits_tab = next(tabs)
+    if credits_tab.open:
+        with credits_tab:
+            st.header("Credits")
+            st.markdown(
+                "Custom statblock styling is adapted from "
+                "[statblock5e by Val Markovic](https://github.com/Valloric/statblock5e), "
+                "licensed under the [Apache License 2.0]"
+                "(https://www.apache.org/licenses/LICENSE-2.0). "
+                "The web components were rewritten as Python-generated HTML and CSS."
+            )
 
     if st.sidebar.button("Log out"):
         st.session_state.clear()

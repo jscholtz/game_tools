@@ -38,10 +38,11 @@ The main interaction path is:
 | **Initiative Tracker** | See visible combatants, initiative, and turn status. | Manage combatants, HP, visibility, turn order, and tracker snapshots. |
 | **Bestiary** | Not shown. | Filter creatures, view stat blocks, and add creatures to initiative. |
 | **Custom Bestiary Editor** | Not shown. | Create and edit custom creatures and add saved creatures to initiative. |
+| **Credits** | View third-party attribution. | View third-party attribution. |
 
 Tabs are role-dependent: players get **Notes**, while the DM gets **Bestiary** and
 **Custom Bestiary Editor**.
-Both roles get the other four tabs.
+Both roles get the other tabs.
 
 ### Module responsibilities
 
@@ -62,6 +63,9 @@ Both roles get the other four tabs.
   `message_injection.py` provides the external text-screening client used for
   chat messages and private notes.
 - `stat_blocks.py` renders Bestiary stat blocks in sandboxed frames.
+- `statblock_renderer/` generates custom statblock HTML and CSS in Python.
+  Its styling is adapted from [statblock5e](https://github.com/Valloric/statblock5e)
+  under Apache-2.0; the license is included in that directory.
 
 At the repository root, `pyproject.toml`, `requirements.txt`, and `uv.lock`
 describe the Python project and dependencies. `tests/` contains the bestiary
@@ -140,7 +144,7 @@ Custom entries are read live and appear under the **Custom** source. The DM-only
 statistics, and free-text traits and action sections. Name, type, size, armor
 class, speed, positive hit points, and a non-negative numeric or fractional
 challenge rating are required. Edits use revision checks to avoid overwriting
-concurrent changes. Custom stat blocks are simplified generated HTML; text is
+concurrent changes. Custom stat blocks use Python-generated HTML and CSS; text is
 escaped and displayed in the same sandbox as standard stat blocks. Saved
 creatures can be added to initiative from either tab.
 The DM can add a selected creature to the initiative tracker with a chosen

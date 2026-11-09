@@ -7,6 +7,7 @@ import streamlit as st
 
 from .config import get_required_env
 from .database import get_database
+from .initiative_models import InitiativeTracker
 
 TRACKER_KEY = "game_helper:initiative:tracker"
 
@@ -48,63 +49,38 @@ def _load_tracker_state() -> dict[str, str]:
         return client.hgetall(TRACKER_KEY)
 
 
-def _validate_tracker(tracker: Any) -> dict[str, Any]:
-    if not isinstance(tracker, dict):
-        raise ValueError("Initiative tracker must be an object.")
-    combatants = tracker.get("combatants")
-    if not isinstance(combatants, list):
-        raise ValueError("Initiative tracker must contain a combatants list.")
-    for combatant in combatants:
-        if (
-            not isinstance(combatant, dict)
-            or not isinstance(combatant.get("id"), str)
-            or not isinstance(combatant.get("name"), str)
-            or not isinstance(combatant.get("initiative"), int)
-            or not isinstance(combatant.get("dead"), bool)
-            or not isinstance(combatant.get("visible"), bool)
-        ):
-            raise ValueError("Initiative tracker contains an invalid combatant.")
-        current_hp = combatant.setdefault("current_hp", 10)
-        if not isinstance(current_hp, int):
-            raise ValueError("Combatant hit points are invalid.")
-        max_hp = combatant.setdefault("max_hp", max(current_hp, 1))
-        if (
-            not isinstance(max_hp, int)
-            or current_hp < 0
-            or max_hp < 1
-            or current_hp > max_hp
-        ):
-            raise ValueError("Combatant hit points are invalid.")
-    return tracker
-
-
-def load_tracker() -> dict[str, Any]:
+def load_tracker() -> InitiativeTracker:
     encoded_tracker = _load_tracker_state().get("current")
     if encoded_tracker is None:
-        return {"combatants": [], "current_turn_id": None}
-    return _validate_tracker(json.loads(encoded_tracker))
+        return InitiativeTracker(combatants=[], current_turn_id=None)
+    return InitiativeTracker.model_validate_json(encoded_tracker)
 
 
-def load_tracker_default() -> dict[str, Any] | None:
+def load_tracker_default() -> InitiativeTracker | None:
     encoded_default = _load_tracker_state().get("default")
     if encoded_default is None:
         return None
-    return _validate_tracker(json.loads(encoded_default))
+    return InitiativeTracker.model_validate_json(encoded_default)
 
 
-def save_tracker(tracker: dict[str, Any]) -> None:
+def _validated_document(tracker: InitiativeTracker) -> dict[str, Any]:
+    document = tracker.model_dump(exclude_unset=True)
+    return InitiativeTracker.model_validate(document).model_dump(exclude_unset=True)
+
+
+def save_tracker(tracker: InitiativeTracker) -> None:
     get_redis_client().hset(
         TRACKER_KEY,
         mapping={
             "_initialized": "1",
-            "current": json.dumps(tracker),
+            "current": json.dumps(_validated_document(tracker)),
         },
     )
 
 
-def save_tracker_snapshot(tracker: dict[str, Any]) -> None:
+def save_tracker_snapshot(tracker: InitiativeTracker) -> None:
     get_database()["initiative"].update_one(
         {"_id": "tracker"},
-        {"$set": {"current": tracker}},
+        {"$set": {"current": _validated_document(tracker)}},
         upsert=True,
     )

@@ -5,6 +5,7 @@ description = "Streamlit campaign portal for D&D characters, notes, messages, an
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "pydantic>=2.14.2",
     "pymongo>=4.19.0",
     "python-dotenv>=1.0.0",
     "redis>=5.0.0",

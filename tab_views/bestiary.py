@@ -86,9 +86,9 @@ def render_bestiary_tab() -> None:
                     try:
                         tracker = get_session_tracker()
                         combatant = make_combatant(combatant_name, int(initiative), hit_points)
-                        combatant["creature_slug"] = selected
-                        combatant["visible"] = False
-                        tracker["combatants"].append(combatant)
+                        combatant.creature_slug = selected
+                        combatant.visible = False
+                        tracker.combatants.append(combatant)
                         persist_tracker(tracker)
                     except (KeyError, PyMongoError, RedisError, ValueError) as error:
                         st.error(f"Could not add creature to initiative: {error}")

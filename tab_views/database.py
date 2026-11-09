@@ -1,5 +1,3 @@
-import base64
-import binascii
 from typing import Any, TypedDict
 from uuid import uuid4
 
@@ -91,7 +89,6 @@ def load_character_cards(player_names: list[str]) -> dict[str, dict[str, Any]]:
         "race": 1,
         "passive_perception": 1,
         "passive_insight": 1,
-        "insight": 1,
         "armor_class": 1,
         "max_hp": 1,
         "classes": 1,
@@ -116,45 +113,6 @@ def save_character_card(
         raise FileNotFoundError(f"User data not found for {username}.")
 
 
-def load_public_file(filename: str) -> str | bytes:
-    document = get_database()["public_data"].find_one({"_id": filename})
-    if document is None:
-        raise FileNotFoundError(f"No public data found for {filename}.")
-    content = document.get("content")
-    if not isinstance(content, (str, bytes)):
-        raise ValueError(f"Public data content for {filename} must be text or bytes.")
-    return content
-
-
-def load_publication_settings() -> dict[str, bool]:
-    document = get_database()["public_data"].find_one({"_id": "publication_settings"})
-    if document is None:
-        return {}
-    settings = document.get("sections")
-    if not isinstance(settings, dict) or not all(
-        isinstance(key, str) and isinstance(value, bool)
-        for key, value in settings.items()
-    ):
-        raise ValueError("DM publication settings must map section names to true/false.")
-    return settings
-
-
-def load_public_board() -> tuple[str, dict[str, bool] | None, dict[str, bool]]:
-    document = get_database()["public_data"].find_one({"_id": "public.md"})
-    if document is None:
-        raise FileNotFoundError("No public data found for public.md.")
-    content = document.get("content")
-    if not isinstance(content, str):
-        raise ValueError("Public board content must be text.")
-    settings = document.get("sections")
-    if "sections" in document and (
-        not isinstance(settings, dict)
-        or not all(isinstance(key, str) and isinstance(value, bool) for key, value in settings.items())
-    ):
-        raise ValueError("Public board settings must map section names to true/false.")
-    return content, settings, settings if settings is not None else load_publication_settings()
-
-
 def load_public_notes() -> tuple[list[PublicNote], str] | None:
     document = get_database()["public_data"].find_one({"_id": "public_notes"})
     if document is None:
@@ -174,12 +132,8 @@ def load_public_notes() -> tuple[list[PublicNote], str] | None:
         ):
             raise ValueError("Invalid public note data.")
         for image in note["images"]:
-            if image.startswith("image:") and len(image) > len("image:"):
-                continue
-            try:
-                base64.b64decode(image, validate=True)
-            except (binascii.Error, ValueError) as error:
-                raise ValueError("Invalid public note image encoding.") from error
+            if not image.startswith("image:") or len(image) == len("image:"):
+                raise ValueError("Invalid public note image reference.")
     return notes, revision
 
 
@@ -198,8 +152,6 @@ def load_public_image(reference: str) -> tuple[str, bytes]:
         raise ValueError("Invalid image reference.")
     image_id = reference[len("image:"):]
     image = get_database()["public_data"].find_one({"_id": f"public_image:{image_id}"})
-    if image is None:
-        image = get_database()["public_images"].find_one({"_id": image_id})
     if image is None:
         raise FileNotFoundError(f"Image {reference} not found.")
     name = image.get("name")
@@ -249,7 +201,7 @@ def load_dm_unread_counts(player_names: list[str]) -> dict[str, int]:
                 "$match": {
                     "recipient": "dm",
                     "sender": {"$in": player_names},
-                    "dm_read": {"$ne": True},
+                    "dm_read": False,
                 }
             },
             {"$group": {"_id": "$sender", "count": {"$sum": 1}}},
@@ -263,7 +215,7 @@ def mark_dm_messages_read(player_name: str) -> None:
         {
             "sender": player_name,
             "recipient": "dm",
-            "dm_read": {"$ne": True},
+            "dm_read": False,
         },
         {"$set": {"dm_read": True}},
     )

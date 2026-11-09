@@ -30,18 +30,14 @@ CLASS_FIELDS = (
     ("levels", "Levels"),
 )
 PLAYER_TEXT_FIELDS = (
+    ("character_description", "Character description"),
     ("background", "Character background"),
     ("story", "Character story"),
 )
 
 
 def _stat_value(data: dict, field: str):
-    value = data.get(field)
-    if field == "passive_insight" and value is None:
-        insight = data.get("insight")
-        if isinstance(insight, int) and not isinstance(insight, bool):
-            return 10 + insight
-    return value
+    return data.get(field)
 
 
 def _valid_website_url(url: str) -> bool:
@@ -143,7 +139,7 @@ def _edit_character_card(username: str, *, is_dm: bool) -> None:
         not is_dm
         and any(not isinstance(data.get(field, ""), str) for field, _ in PLAYER_TEXT_FIELDS)
     ):
-        st.error("Character name, background, and story must be text.")
+        st.error("Character name and character text fields must be text.")
         if st.button("Back to characters"):
             st.session_state.pop(edit_key, None)
             st.rerun()
@@ -169,7 +165,7 @@ def _edit_character_card(username: str, *, is_dm: bool) -> None:
         return
 
     st.subheader(f"Edit character: {username}")
-    st.caption("Leave a stat blank if it is unknown. Passive insight defaults to 10 + Insight modifier.")
+    st.caption("Leave a stat blank if it is unknown.")
     with st.form(f"character_card_{username}"):
         character = st.text_input("Character name", value=character_name)
         stats = {
@@ -412,10 +408,17 @@ def render_character_tab(username: str):
                     if text:
                         if isinstance(text, str):
                             st.subheader(label)
-                            st.text(text)
+                            if field == "character_description":
+                                st.markdown(text)
+                            else:
+                                st.text(text)
                         else:
                             st.error(f"{label} must be text.")
-        elif "text" in user_data:
+        elif "character_description" in user_data:
             with st.container(border=True):
                 st.subheader("Character Data")
-                st.write(user_data["text"])
+                description = user_data["character_description"]
+                if isinstance(description, str):
+                    st.markdown(description)
+                else:
+                    st.error("Character description must be text.")

@@ -48,11 +48,7 @@ def _load_tracker_state() -> dict[str, str]:
         return client.hgetall(TRACKER_KEY)
 
 
-def load_tracker() -> dict[str, Any]:
-    encoded_tracker = _load_tracker_state().get("current")
-    if encoded_tracker is None:
-        return {"combatants": [], "current_turn_id": None}
-    tracker = json.loads(encoded_tracker)
+def _validate_tracker(tracker: Any) -> dict[str, Any]:
     if not isinstance(tracker, dict):
         raise ValueError("Initiative tracker must be an object.")
     combatants = tracker.get("combatants")
@@ -65,6 +61,7 @@ def load_tracker() -> dict[str, Any]:
             or not isinstance(combatant.get("name"), str)
             or not isinstance(combatant.get("initiative"), int)
             or not isinstance(combatant.get("dead"), bool)
+            or not isinstance(combatant.get("visible"), bool)
         ):
             raise ValueError("Initiative tracker contains an invalid combatant.")
         current_hp = combatant.setdefault("current_hp", 10)
@@ -81,12 +78,18 @@ def load_tracker() -> dict[str, Any]:
     return tracker
 
 
+def load_tracker() -> dict[str, Any]:
+    encoded_tracker = _load_tracker_state().get("current")
+    if encoded_tracker is None:
+        return {"combatants": [], "current_turn_id": None}
+    return _validate_tracker(json.loads(encoded_tracker))
+
+
 def load_tracker_default() -> dict[str, Any] | None:
     encoded_default = _load_tracker_state().get("default")
     if encoded_default is None:
         return None
-    default = json.loads(encoded_default)
-    return default if isinstance(default, dict) else None
+    return _validate_tracker(json.loads(encoded_default))
 
 
 def save_tracker(tracker: dict[str, Any]) -> None:

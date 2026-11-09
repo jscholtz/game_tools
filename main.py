@@ -3,6 +3,7 @@ import hashlib
 import streamlit as st
 from pymongo.errors import PyMongoError
 
+from tab_views.bestiary import render_bestiary_tab
 from tab_views.character import render_character_tab, render_dm_character_tab
 from tab_views.database import get_users
 from tab_views.initiative import render_initiative_tab
@@ -83,6 +84,8 @@ def main():
     if user_details["role"] == "player":
         tab_names.append("Notes")
     tab_names.extend(["Public Board", "Messages with DM", "Initiative Tracker"])
+    if user_details["role"] == "dm":
+        tab_names.append("Bestiary")
     tabs = iter(st.tabs(tab_names, key="main_tabs", on_change="rerun"))
 
     with next(tabs):
@@ -109,6 +112,12 @@ def main():
 
     with next(tabs):
         render_initiative_tab(is_dm=user_details["role"] == "dm")
+
+    if user_details["role"] == "dm":
+        bestiary_tab = next(tabs)
+        if bestiary_tab.open:
+            with bestiary_tab:
+                render_bestiary_tab()
 
     if st.sidebar.button("Log out"):
         st.session_state.logged_in_user = None

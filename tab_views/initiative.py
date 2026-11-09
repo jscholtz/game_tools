@@ -75,8 +75,6 @@ def confirm_reset_tracker(principal: Principal) -> None:
     if confirm_column.button("Reset tracker", type="primary"):
         try:
             default_tracker = get_dm_tracker_default(principal)
-            if default_tracker is None:
-                raise ValueError("No valid default initiative tracker is configured.")
             persist_tracker(principal, deepcopy(default_tracker))
         except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
             st.error(f"Could not reset initiative tracker: {error}")
@@ -296,7 +294,7 @@ def render_dm_initiative_tab(principal: Principal) -> None:
                             else:
                                 try:
                                     display = get_bestiary_display(principal, slug)
-                                except (FileNotFoundError, KeyError, PermissionError, PyMongoError) as error:
+                                except (FileNotFoundError, KeyError, PermissionError, PyMongoError, ValueError) as error:
                                     st.error(f"Could not load creature stat block: {error}")
                                 else:
                                     render_stat_block_tab_link(display, actor.name)

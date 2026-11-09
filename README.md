@@ -14,8 +14,9 @@ only visible notes and images. Character and private-note operations enforce
 ownership, and DM character edits are limited to shared character fields.
 These checks use the authenticated server-side session principal; storage
 modules remain internal to the application, not independently authenticated APIs.
-Character edit validation and initiative combatant updates live in their
-respective services; views handle input, presentation, and session state.
+Character edits, initiative combatant updates, board edits, bestiary filtering,
+authentication checks, and message/note screening live in their respective
+services; views handle input, presentation, and session state.
 
 On first initiative load, if Redis has no tracker state, the app copies the
 saved tracker and default from MongoDB into Redis. Redis holds live tracker
@@ -61,7 +62,8 @@ not stored. Background, story, and initiative bonus are stored in the player's
 `private_data` document.
 
 Character, private-note, chat message, and public-board data are validated at
-the MongoDB boundary. Private notes must be a list of objects with string
+the MongoDB boundary, as are login records and bestiary index and display
+projections. Private notes must be a list of objects with string
 `id`, `text`, and `created_at` fields; an absent field means no notes. Existing
 string-valued `notes` fields must be migrated to that format before the affected
 players can use their notes. Invalid values are reported and are not overwritten.
@@ -123,6 +125,17 @@ uv run python tests/check_redis.py
 
 This is a live integration check, not an automated test; it requires working
 Redis credentials and writes a unique key that expires after 60 seconds.
+
+To validate every bestiary index entry and stat-block display against the
+application models, run the read-only integration test against the MongoDB
+configured by `MONGODB_URI`:
+
+```bash
+uv run python -m unittest discover -s tests -p test_bestiary_data.py
+```
+
+The test fails if either collection is empty, any record is invalid, or an
+indexed creature has no display.
 
 ## Low-priority TODO
 

@@ -1,18 +1,18 @@
-from datetime import datetime
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 import streamlit as st
 from bson.errors import InvalidDocument
 from pymongo.errors import PyMongoError
 
 from .board_service import (
-    add_board_image,
+    BoardEdit,
+    BoardInputError,
     create_board,
     get_board_image,
     get_dm_board,
     get_player_board,
-    save_board,
+    new_board_note,
+    save_board_edit,
 )
 from .data_models import PublicNote
 from .principal import Principal
@@ -21,13 +21,7 @@ from .principal import Principal
 def start_editor(principal: Principal, notes: list[PublicNote], revision: str, index: int | None) -> None:
     principal.require_dm()
     note = (
-        PublicNote(
-            header="",
-            date=datetime.now(ZoneInfo("Europe/Amsterdam")).date().isoformat(),
-            text="",
-            visible=False,
-            images=[],
-        )
+        new_board_note(principal)
         if index is None
         else notes[index]
     )
@@ -81,30 +75,24 @@ def render_editor(principal: Principal) -> None:
         st.rerun()
     if not save:
         return
-    if not delete and not header.strip():
-        st.error("Enter a header for the note.")
-        return
-    notes = list(editor["notes"])
-    index = editor["index"]
     try:
-        if delete:
-            del notes[index]
-        else:
-            updated = PublicNote(
-                header=header.strip(),
-                date=date.strip(),
+        saved = save_board_edit(
+            principal,
+            editor["notes"],
+            editor["revision"],
+            editor["index"],
+            BoardEdit(
+                header=header,
+                date=date,
                 text=text,
                 visible=visible,
-                images=[image for image, remove in zip(note.images, removed) if not remove],
-            )
-            updated.images.extend(
-                add_board_image(principal, upload.name, upload.getvalue()) for upload in uploads
-            )
-            if index is None:
-                notes.append(updated)
-            else:
-                notes[index] = updated
-        saved = save_board(principal, notes, editor["revision"])
+                removed_images=removed,
+                uploads=[(upload.name, upload.getvalue()) for upload in uploads] if not delete else [],
+                delete=delete,
+            ),
+        )
+    except BoardInputError as error:
+        st.error(str(error))
     except (PermissionError, PyMongoError, InvalidDocument, ValueError) as error:
         st.error(f"Could not save public note: {error}")
     else:

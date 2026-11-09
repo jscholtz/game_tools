@@ -2,8 +2,10 @@ import streamlit as st
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-from .bestiary_service import get_bestiary_display, get_bestiary_index
-from .initiative_service import add_bestiary_combatant
+from .bestiary_service import (
+    BestiaryFilters, add_creature, bestiary_options, creature_hit_points,
+    filter_bestiary, get_bestiary_display, get_bestiary_index,
+)
 from .principal import Principal
 from .stat_blocks import render_stat_block
 
@@ -16,7 +18,7 @@ def render_bestiary_tab(principal: Principal) -> None:
     st.header("Bestiary")
     try:
         creatures = get_bestiary_index(principal)
-    except (KeyError, PermissionError, PyMongoError) as error:
+    except (KeyError, PermissionError, PyMongoError, ValueError) as error:
         st.error(f"Could not load bestiary: {error}")
         return
 
@@ -24,38 +26,26 @@ def render_bestiary_tab(principal: Principal) -> None:
         st.info("The bestiary is empty.")
         return
 
-    creature_types = sorted({entry["type"] for entry in creatures})
-    sizes = sorted({entry["size"] for entry in creatures})
-    sources = sorted({entry["document__title"] for entry in creatures})
-    rating_values = {entry["challenge_rating"]: entry["cr"] for entry in creatures}
-    ratings = sorted(rating_values, key=rating_values.__getitem__)
+    options = bestiary_options(creatures)
     filters, results_column = st.columns([1, 2])
     with filters:
-        name = st.text_input("Search by name").strip().casefold()
-        selected_type = st.selectbox("Type", ["All", *creature_types])
-        selected_rating = st.selectbox("Challenge rating", ["All", *ratings])
-        selected_size = st.selectbox("Size", ["All", *sizes])
-        selected_source = st.selectbox("Source", ["All", *sources])
+        name = st.text_input("Search by name")
+        selected_type = st.selectbox("Type", ["All", *options.types])
+        selected_rating = st.selectbox("Challenge rating", ["All", *options.ratings])
+        selected_size = st.selectbox("Size", ["All", *options.sizes])
+        selected_source = st.selectbox("Source", ["All", *options.sources])
 
-    matches = sorted(
-        (
-            entry for entry in creatures
-            if name in entry["name"].casefold()
-            and (selected_type == "All" or entry["type"] == selected_type)
-            and (selected_rating == "All" or entry["challenge_rating"] == selected_rating)
-            and (selected_size == "All" or entry["size"] == selected_size)
-            and (selected_source == "All" or entry["document__title"] == selected_source)
-        ),
-        key=lambda entry: (entry["name"].casefold(), entry["document__title"], entry["slug"]),
+    matches = filter_bestiary(
+        creatures, BestiaryFilters(name, selected_type, selected_rating, selected_size, selected_source)
     )
     with results_column:
         st.caption(f"{len(matches)} creatures found.")
         if not matches:
             return
         labels = {
-            entry["slug"]: (
-                f"{entry['name']} · CR {entry['challenge_rating']} · "
-                f"{entry['type']} · {entry['size']} · {entry['document__title']}"
+            entry.slug: (
+                f"{entry.name} · CR {entry.challenge_rating} · "
+                f"{entry.type} · {entry.size} · {entry.document__title}"
             )
             for entry in matches
         }
@@ -69,33 +59,28 @@ def render_bestiary_tab(principal: Principal) -> None:
         if selected is None:
             return
 
-        creature = next(entry for entry in matches if entry["slug"] == selected)
-        hit_points = creature.get("hit_points")
-        if not isinstance(hit_points, int) or isinstance(hit_points, bool) or hit_points < 1:
-            st.error("Creature hit points must be a positive whole number.")
+        creature = next(entry for entry in matches if entry.slug == selected)
+        try:
+            hit_points = creature_hit_points(creature)
+        except ValueError as error:
+            st.error(str(error))
         else:
             with st.form(f"bestiary_add_{selected}"):
-                combatant_name = st.text_input("Name in initiative", value=creature["name"])
+                combatant_name = st.text_input("Name in initiative", value=creature.name)
                 initiative = st.number_input("Initiative", value=0, step=1)
                 st.caption(f"Starting hit points: {hit_points}")
-                add_creature = st.form_submit_button("Add to initiative")
-            if add_creature:
-                combatant_name = combatant_name.strip()
-                if not combatant_name:
-                    st.error("Enter a name for the combatant.")
+                submitted = st.form_submit_button("Add to initiative")
+            if submitted:
+                try:
+                    add_creature(principal, creature, combatant_name, int(initiative))
+                except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
+                    st.error(f"Could not add creature to initiative: {error}")
                 else:
-                    try:
-                        add_bestiary_combatant(
-                            principal, combatant_name, int(initiative), hit_points, selected
-                        )
-                    except (KeyError, PermissionError, PyMongoError, RedisError, ValueError) as error:
-                        st.error(f"Could not add creature to initiative: {error}")
-                    else:
-                        st.success(f"{combatant_name} added to initiative.")
+                    st.success(f"{combatant_name.strip()} added to initiative.")
 
         try:
             display = get_bestiary_display(principal, selected)
-        except (FileNotFoundError, KeyError, PermissionError, PyMongoError) as error:
+        except (FileNotFoundError, KeyError, PermissionError, PyMongoError, ValueError) as error:
             st.error(f"Could not load creature: {error}")
             return
         render_stat_block(display)

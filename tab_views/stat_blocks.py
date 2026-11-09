@@ -1,24 +1,15 @@
 import json
 from html import escape
-from typing import Any
-
 import streamlit as st
+
+from .data_models import BestiaryDisplay
 
 FRAME_PADDING = 50
 
 
-def _prepare_stat_block(display: dict[str, Any]) -> tuple[str, int, int]:
-    html = display.get("inline")
-    sizes = display.get("sizes")
-    if (
-        not isinstance(html, str)
-        or "<head>" not in html
-        or "</body>" not in html
-        or not isinstance(sizes, list)
-        or len(sizes) != 2
-        or any(not isinstance(size, int) or isinstance(size, bool) or size <= 0 for size in sizes)
-    ):
-        raise ValueError("Creature stat block has invalid HTML or dimensions.")
+def _prepare_stat_block(display: BestiaryDisplay) -> tuple[str, int, int]:
+    html = display.inline
+    sizes = display.sizes
     policy = (
         "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
         "img-src data:; font-src data:; base-uri 'none'; form-action 'none'"
@@ -27,7 +18,7 @@ def _prepare_stat_block(display: dict[str, Any]) -> tuple[str, int, int]:
     return html.replace("<head>", f"<head>{meta}", 1), sizes[0], sizes[1]
 
 
-def render_stat_block(display: dict[str, Any]) -> None:
+def render_stat_block(display: BestiaryDisplay) -> None:
     try:
         html, height, width = _prepare_stat_block(display)
     except ValueError as error:
@@ -73,7 +64,7 @@ def render_stat_block(display: dict[str, Any]) -> None:
     )
 
 
-def render_stat_block_tab_link(display: dict[str, Any], creature_name: str) -> None:
+def render_stat_block_tab_link(display: BestiaryDisplay, creature_name: str) -> None:
     try:
         html, height, width = _prepare_stat_block(display)
     except ValueError as error:

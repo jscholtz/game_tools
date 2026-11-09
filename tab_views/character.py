@@ -13,6 +13,7 @@ from .character_service import (
     get_character,
     get_dm_character_cards,
     get_dm_unread_counts,
+    resolve_character_players,
     update_character,
     valid_website_url,
 )
@@ -197,18 +198,11 @@ def render_dm_character_tab(principal: Principal, player_names: list[str]) -> No
             st.error(f"Could not load character card configuration: {error}")
             return
 
-    player_lookup: dict[str, list[str]] = {}
-    for player in player_names:
-        player_lookup.setdefault(player.casefold(), []).append(player)
-    selected_players = []
-    for configured in st.session_state["character_card_players"]:
-        matches = player_lookup.get(configured.casefold(), [])
-        if len(matches) != 1:
-            st.warning(
-                f"Character card player {configured!r} matches {len(matches)} player accounts."
-            )
-        else:
-            selected_players.append(matches[0])
+    selected_players, unmatched = resolve_character_players(
+        st.session_state["character_card_players"], player_names
+    )
+    for configured, count in unmatched:
+        st.warning(f"Character card player {configured!r} matches {count} player accounts.")
 
     username = st.session_state.get("editing_character_card")
     if username in selected_players:

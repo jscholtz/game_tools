@@ -58,9 +58,12 @@ def get_dm_tracker(principal: Principal) -> InitiativeTracker:
     return load_tracker()
 
 
-def get_dm_tracker_default(principal: Principal) -> InitiativeTracker | None:
+def get_dm_tracker_default(principal: Principal) -> InitiativeTracker:
     principal.require_dm()
-    return load_tracker_default()
+    tracker = load_tracker_default()
+    if tracker is None:
+        raise ValueError("No valid default initiative tracker is configured.")
+    return tracker
 
 
 def save_dm_tracker(principal: Principal, tracker: InitiativeTracker) -> None:

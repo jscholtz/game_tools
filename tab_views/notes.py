@@ -4,12 +4,11 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 from pymongo.errors import PyMongoError
-from typesafe_sdk import TypeSafeError
-
-from .message_injection import get_message_injection_checker
 from .data_models import PrivateNote
 from .principal import Principal
-from .user_data import delete_user_note, load_user_notes, save_user_note
+from .user_data import (
+    ScreeningError, ScreeningRejectedError, delete_user_note, load_user_notes, save_user_note,
+)
 
 LOCAL_TZ = ZoneInfo("Europe/Amsterdam")
 DRAFTS_KEY = "note_drafts"
@@ -38,15 +37,13 @@ def _stop_editing(note_id: str) -> None:
 def _save(principal: Principal, note_id: str) -> bool:
     text = st.session_state.get(_text_key(note_id), "")
     try:
-        is_injection = get_message_injection_checker().check(text)
-    except (KeyError, TypeSafeError) as error:
-        st.error(f"Could not check note safety: {error}")
-        return False
-    if is_injection:
+        save_user_note(principal, note_id, text)
+    except ScreeningRejectedError:
         st.toast("No, no, no...!")
         return False
-    try:
-        save_user_note(principal, note_id, text)
+    except ScreeningError as error:
+        st.error(f"Could not check note safety: {error}")
+        return False
     except (PermissionError, PyMongoError, ValueError, FileNotFoundError) as error:
         st.error(f"Could not save note: {error}")
         return False

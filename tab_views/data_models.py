@@ -1,6 +1,48 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class LoginRecord(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore", hide_input_in_errors=True)
+
+    username: str
+    password_hash: str = Field(repr=False)
+    role: str
+
+
+class BestiaryEntry(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore", hide_input_in_errors=True)
+
+    slug: str
+    name: str
+    type: str
+    size: str
+    challenge_rating: str
+    cr: float
+    document__title: str
+    hit_points: int | None = None
+
+
+class BestiaryDisplay(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore", hide_input_in_errors=True)
+
+    inline: str
+    sizes: list[int]
+
+    @field_validator("inline")
+    @classmethod
+    def validate_html(cls, html: str) -> str:
+        if "<head>" not in html or "</body>" not in html:
+            raise ValueError("Creature stat block has invalid HTML or dimensions.")
+        return html
+
+    @field_validator("sizes")
+    @classmethod
+    def validate_sizes(cls, sizes: list[int]) -> list[int]:
+        if len(sizes) != 2 or any(size <= 0 for size in sizes):
+            raise ValueError("Creature stat block has invalid HTML or dimensions.")
+        return sizes
+
+
 class CharacterClass(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True)
 

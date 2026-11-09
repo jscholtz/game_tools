@@ -166,6 +166,23 @@ def get_dm_character_cards(principal: Principal, player_names: list[str]) -> dic
     return load_character_cards(player_names)
 
 
+def resolve_character_players(
+    configured_players: list[str], player_names: list[str]
+) -> tuple[list[str], list[tuple[str, int]]]:
+    lookup: dict[str, list[str]] = {}
+    for player in player_names:
+        lookup.setdefault(player.casefold(), []).append(player)
+    selected = []
+    unmatched = []
+    for configured in configured_players:
+        matches = lookup.get(configured.casefold(), [])
+        if len(matches) == 1:
+            selected.append(matches[0])
+        else:
+            unmatched.append((configured, len(matches)))
+    return selected, unmatched
+
+
 def get_dm_unread_counts(principal: Principal, player_names: list[str]) -> dict[str, int]:
     principal.require_dm()
     return load_dm_unread_counts(player_names)

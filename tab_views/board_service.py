@@ -1,3 +1,7 @@
+from dataclasses import dataclass
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from .database import (
     create_public_notes,
     load_public_image,
@@ -7,6 +11,32 @@ from .database import (
 )
 from .data_models import PublicNote
 from .principal import Principal
+
+
+class BoardInputError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class BoardEdit:
+    header: str
+    date: str
+    text: str
+    visible: bool
+    removed_images: list[bool]
+    uploads: list[tuple[str, bytes]]
+    delete: bool
+
+
+def new_board_note(principal: Principal) -> PublicNote:
+    principal.require_dm()
+    return PublicNote(
+        header="",
+        date=datetime.now(ZoneInfo("Europe/Amsterdam")).date().isoformat(),
+        text="",
+        visible=False,
+        images=[],
+    )
 
 
 def get_dm_board(principal: Principal) -> tuple[list[PublicNote], str] | None:
@@ -37,11 +67,38 @@ def create_board(principal: Principal) -> bool:
     return create_public_notes([])
 
 
-def add_board_image(principal: Principal, name: str, content: bytes) -> str:
+def save_board_edit(
+    principal: Principal,
+    notes: list[PublicNote],
+    revision: str,
+    index: int | None,
+    edit: BoardEdit,
+) -> bool:
     principal.require_dm()
-    return save_public_image(name, content)
-
-
-def save_board(principal: Principal, notes: list[PublicNote], revision: str) -> bool:
-    principal.require_dm()
-    return save_public_notes(notes, revision)
+    if index is not None and (index < 0 or index >= len(notes)):
+        raise BoardInputError("Public note no longer exists.")
+    if edit.delete:
+        if index is None:
+            raise BoardInputError("Cannot delete a new note.")
+        updated_notes = list(notes)
+        del updated_notes[index]
+    else:
+        if not edit.header.strip():
+            raise BoardInputError("Enter a header for the note.")
+        images = notes[index].images if index is not None else []
+        if len(images) != len(edit.removed_images):
+            raise BoardInputError("Image selections do not match the note.")
+        updated = PublicNote(
+            header=edit.header.strip(),
+            date=edit.date.strip(),
+            text=edit.text,
+            visible=edit.visible,
+            images=[image for image, remove in zip(images, edit.removed_images, strict=True) if not remove],
+        )
+        updated.images.extend(save_public_image(name, content) for name, content in edit.uploads)
+        updated_notes = list(notes)
+        if index is None:
+            updated_notes.append(updated)
+        else:
+            updated_notes[index] = updated
+    return save_public_notes(updated_notes, revision)

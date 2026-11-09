@@ -1,24 +1,14 @@
-import hashlib
-
 import streamlit as st
 from pymongo.errors import PyMongoError
 
+from tab_views.auth_service import load_users, login_user
 from tab_views.bestiary import render_bestiary_tab
 from tab_views.character import render_character_tab, render_dm_character_tab
-from tab_views.database import get_users
 from tab_views.initiative import render_dm_initiative_tab, render_player_initiative_tab
 from tab_views.messages import render_dm_messages_tab, render_player_messages_tab
 from tab_views.notes import render_notes_tab
 from tab_views.principal import Principal
 from tab_views.public_board import render_dm_public_tab, render_player_public_tab
-
-
-def login_user(username: str, password: str, users: dict):
-    user = users.get(username)
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
-    if user is not None and user["password_hash"] == password_hash:
-        return user
-    return None
 
 
 def main():
@@ -38,8 +28,8 @@ def main():
     )
 
     try:
-        users = get_users()
-    except (KeyError, PyMongoError) as error:
+        users = load_users()
+    except (KeyError, PyMongoError, ValueError) as error:
         st.error(f"Could not connect to MongoDB or load login records: {error}")
         return
 
@@ -59,7 +49,7 @@ def main():
             user = login_user(username, password, users)
             if user is not None:
                 st.session_state.logged_in_user = username
-                st.session_state.logged_in_role = user["role"]
+                st.session_state.logged_in_role = user.role
                 st.success(f"Welcome, {username}!")
                 st.rerun()
             else:
@@ -73,41 +63,41 @@ def main():
         st.session_state.clear()
         st.session_state.login_notice = "This account no longer exists. Please log in again."
         st.rerun()
-    if st.session_state.get("logged_in_role") != user_details["role"]:
+    if st.session_state.get("logged_in_role") != user_details.role:
         st.session_state.clear()
         st.session_state.login_notice = "Your account role changed. Please log in again."
         st.rerun()
 
-    if user_details["role"] not in ("dm", "player"):
+    if user_details.role not in ("dm", "player"):
         st.error("This account has an unsupported role.")
         return
-    principal = Principal(username=username, role=user_details["role"])
+    principal = Principal(username=username, role=user_details.role)
 
-    if user_details["role"] == "dm":
+    if user_details.role == "dm":
         st.subheader("Dungeon Master")
     else:
         st.title("D&D Campaign Portal")
         st.subheader(f"Welcome, {username}")
-        st.caption(f"Campaign role: {user_details['role']}")
+        st.caption(f"Campaign role: {user_details.role}")
 
     tab_names = ["Character"]
-    if user_details["role"] == "player":
+    if user_details.role == "player":
         tab_names.append("Notes")
     tab_names.extend(["Public Board", "Messages with DM", "Initiative Tracker"])
-    if user_details["role"] == "dm":
+    if user_details.role == "dm":
         tab_names.append("Bestiary")
     tabs = iter(st.tabs(tab_names, key="main_tabs", on_change="rerun"))
 
     with next(tabs):
-        if user_details["role"] == "dm":
+        if user_details.role == "dm":
             render_dm_character_tab(
                 principal,
-                [name for name, details in users.items() if details["role"] == "player"]
+                [name for name, details in users.items() if details.role == "player"]
             )
         else:
             render_character_tab(principal)
 
-    if user_details["role"] == "player":
+    if user_details.role == "player":
         with next(tabs):
             render_notes_tab(principal)
 
@@ -120,7 +110,7 @@ def main():
     with next(tabs):
         if principal.role == "dm":
             render_dm_messages_tab(
-                principal, [name for name, details in users.items() if details["role"] == "player"]
+                principal, [name for name, details in users.items() if details.role == "player"]
             )
         else:
             render_player_messages_tab(principal)
@@ -131,7 +121,7 @@ def main():
         else:
             render_player_initiative_tab(principal)
 
-    if user_details["role"] == "dm":
+    if user_details.role == "dm":
         bestiary_tab = next(tabs)
         if bestiary_tab.open:
             with bestiary_tab:

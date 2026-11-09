@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from typesafe_sdk import TypeSafeError
+
 from .database import (
     get_database,
     load_chat_messages,
@@ -10,7 +12,25 @@ from .database import (
     save_private_notes,
 )
 from .data_models import ChatMessage, PrivateNote
+from .message_injection import get_message_injection_checker
 from .principal import Principal
+
+
+class ScreeningRejectedError(ValueError):
+    pass
+
+
+class ScreeningError(Exception):
+    pass
+
+
+def _check_text(text: str) -> None:
+    try:
+        rejected = get_message_injection_checker().check(text)
+    except (KeyError, TypeSafeError) as error:
+        raise ScreeningError(str(error)) from error
+    if rejected:
+        raise ScreeningRejectedError("Text rejected by safety screening.")
 
 
 def _conversation(principal: Principal, player_name: str) -> tuple[str, str]:
@@ -43,6 +63,10 @@ def mark_messages_read(principal: Principal, player_name: str) -> None:
 
 def send_message(principal: Principal, player_name: str, text: str) -> None:
     _conversation(principal, player_name)
+    text = text.strip()
+    if not text:
+        raise ValueError("Message must not be empty.")
+    _check_text(text)
     sender, recipient = (player_name, "dm") if principal.role == "player" else ("dm", player_name)
     fields: dict[str, str | bool] = {
         "sender": sender,
@@ -63,6 +87,7 @@ def load_user_notes(principal: Principal) -> list[PrivateNote]:
 
 def save_user_note(principal: Principal, note_id: str, text: str) -> None:
     principal.require_player()
+    _check_text(text)
     notes = load_private_notes(principal.username)
     for note in notes:
         if note.id == note_id:

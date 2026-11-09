@@ -4,12 +4,12 @@ from typing import Callable
 
 import streamlit as st
 from pymongo.errors import PyMongoError
-from typesafe_sdk import TypeSafeError
-
-from .message_injection import get_message_injection_checker
 from .data_models import ChatMessage
 from .principal import Principal
-from .user_data import get_conversation, get_unread_counts, mark_messages_read, send_message
+from .user_data import (
+    ScreeningError, ScreeningRejectedError, get_conversation, get_unread_counts,
+    mark_messages_read, send_message,
+)
 
 
 def format_timestamp(timestamp: str) -> str:
@@ -62,27 +62,18 @@ def _show_player_chat(principal: Principal):
 
     prompt = st.chat_input("Write a message")
     if prompt and prompt.strip():
-        if _message_is_allowed(prompt):
-            try:
-                send_message(principal, principal.username, prompt.strip())
-            except (PermissionError, PyMongoError, ValueError) as error:
-                st.error(f"Could not send message: {error}")
-            else:
-                st.rerun()
+        try:
+            send_message(principal, principal.username, prompt)
+        except ScreeningRejectedError:
+            st.toast("No, no, no...!")
+        except ScreeningError as error:
+            st.error(f"Could not check message safety: {error}")
+        except (PermissionError, PyMongoError, ValueError) as error:
+            st.error(f"Could not send message: {error}")
+        else:
+            st.rerun()
 
     _render_chat_messages(messages)
-
-
-def _message_is_allowed(message: str) -> bool:
-    try:
-        is_injection = get_message_injection_checker().check(message.strip())
-    except (KeyError, TypeSafeError) as error:
-        st.error(f"Could not check message safety: {error}")
-        return False
-    if is_injection:
-        st.toast("No, no, no...!")
-        return False
-    return True
 
 
 def _render_dm_conversation(principal: Principal, player_name: str, unread_count: int) -> None:
@@ -118,13 +109,16 @@ def _render_dm_conversation(principal: Principal, player_name: str, unread_count
             with send_column:
                 submitted = st.form_submit_button("Send")
         if submitted and prompt.strip():
-            if _message_is_allowed(prompt):
-                try:
-                    send_message(principal, player_name, prompt.strip())
-                except (PermissionError, PyMongoError, ValueError) as error:
-                    st.error(f"Could not send message: {error}")
-                else:
-                    st.rerun()
+            try:
+                send_message(principal, player_name, prompt)
+            except ScreeningRejectedError:
+                st.toast("No, no, no...!")
+            except ScreeningError as error:
+                st.error(f"Could not check message safety: {error}")
+            except (PermissionError, PyMongoError, ValueError) as error:
+                st.error(f"Could not send message: {error}")
+            else:
+                st.rerun()
 
         _render_chat_messages(messages, timestamp_formatter=format_dm_timestamp, max_height=320)
 

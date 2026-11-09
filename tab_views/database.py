@@ -7,10 +7,25 @@ from pymongo.errors import DuplicateKeyError
 from pydantic import TypeAdapter, ValidationError
 
 from .config import get_required_env
-from .data_models import CharacterData, ChatMessage, PrivateNote, PublicBoard, PublicNote
+from .data_models import (
+    BestiaryDisplay, BestiaryEntry, CharacterData, ChatMessage, LoginRecord,
+    PrivateNote, PublicBoard, PublicNote,
+)
 
 DATABASE_NAME = "game_helper"
 
+BESTIARY_INDEX_FIELDS = {
+    "_id": 0,
+    "slug": 1,
+    "name": 1,
+    "type": 1,
+    "size": 1,
+    "challenge_rating": 1,
+    "cr": 1,
+    "document__title": 1,
+    "hit_points": 1,
+}
+BESTIARY_DISPLAY_FIELDS = {"_id": 0, "inline": 1, "sizes": 1}
 
 _private_notes_adapter = TypeAdapter(list[PrivateNote])
 
@@ -35,38 +50,31 @@ def get_database():
 
 
 @st.cache_data(show_spinner=False)
-def load_bestiary_index() -> list[dict[str, Any]]:
-    fields = {
-        "_id": 0,
-        "slug": 1,
-        "name": 1,
-        "type": 1,
-        "size": 1,
-        "challenge_rating": 1,
-        "cr": 1,
-        "document__title": 1,
-        "hit_points": 1,
-    }
-    return list(get_mongodb_client()["creatures"]["basic_list"].find({}, fields))
+def load_bestiary_index() -> list[BestiaryEntry]:
+    return [
+        BestiaryEntry.model_validate(document)
+        for document in get_mongodb_client()["creatures"]["basic_list"].find({}, BESTIARY_INDEX_FIELDS)
+    ]
 
 
 @st.cache_data(show_spinner=False)
-def load_bestiary_display(slug: str) -> dict[str, Any]:
+def load_bestiary_display(slug: str) -> BestiaryDisplay:
     display = get_mongodb_client()["creatures"]["display"].find_one(
-        {"slug": slug}, {"_id": 0, "inline": 1, "sizes": 1}
+        {"slug": slug}, BESTIARY_DISPLAY_FIELDS
     )
     if display is None:
         raise FileNotFoundError(f"Creature stat block not found: {slug}")
-    return display
+    return BestiaryDisplay.model_validate(display)
 
 
-def get_users() -> dict[str, dict[str, Any]]:
-    return {
-        document["username"]: document
-        for document in get_database()["logins"].find(
-            {}, {"username": 1, "password_hash": 1, "role": 1}
-        )
-    }
+def get_users() -> dict[str, LoginRecord]:
+    users = {}
+    for document in get_database()["logins"].find(
+        {}, {"_id": 0, "username": 1, "password_hash": 1, "role": 1}
+    ):
+        user = LoginRecord.model_validate(document)
+        users[user.username] = user
+    return users
 
 
 def load_private_data(username: str) -> CharacterData:

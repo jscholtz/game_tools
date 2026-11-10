@@ -9,7 +9,7 @@ from pydantic import TypeAdapter, ValidationError
 from .config import get_required_env
 from .data_models import (
     BestiaryDisplay, BestiaryEntry, CharacterData, ChatMessage, CustomCreature, LoginRecord,
-    PrivateNote, PublicBoard, PublicNote,
+    PrivateNote, PublicBoard, PublicNote, StandardCreature,
 )
 
 DATABASE_NAME = "game_helper"
@@ -65,6 +65,16 @@ def load_bestiary_display(slug: str) -> BestiaryDisplay:
     if display is None:
         raise FileNotFoundError(f"Creature stat block not found: {slug}")
     return BestiaryDisplay.model_validate(display)
+
+
+@st.cache_data(show_spinner=False, max_entries=1024)
+def load_standard_creature(slug: str) -> StandardCreature:
+    document = get_mongodb_client()["creatures"]["basic_list"].find_one(
+        {"slug": slug}, {"_id": 0}
+    )
+    if document is None:
+        raise FileNotFoundError(f"Creature not found: {slug}")
+    return StandardCreature.model_validate(document)
 
 
 def load_custom_creatures() -> list[CustomCreature]:

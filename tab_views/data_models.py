@@ -24,11 +24,9 @@ class BestiaryEntry(BaseModel):
     hit_points: int | None = None
 
 
-class CustomCreature(BaseModel):
+class StatblockCreature(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True)
 
-    slug: str
-    revision: str
     name: str
     type: str
     size: str
@@ -80,6 +78,11 @@ class CustomCreature(BaseModel):
             raise ValueError("Challenge rating must be a non-negative number or fraction.")
         return value
 
+
+class CustomCreature(StatblockCreature):
+    slug: str
+    revision: str
+
     def as_bestiary_entry(self) -> BestiaryEntry:
         return BestiaryEntry(
             slug=self.slug, name=self.name, type=self.type, size=self.size,
@@ -88,11 +91,63 @@ class CustomCreature(BaseModel):
         )
 
 
+class BestiaryAction(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore", hide_input_in_errors=True)
+
+    name: str
+    desc: str
+
+
+class StandardCreature(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore", hide_input_in_errors=True)
+
+    slug: str
+    name: str
+    type: str
+    subtype: str
+    size: str
+    alignment: str
+    challenge_rating: str
+    armor_class: int
+    armor_desc: str | None
+    hit_points: int
+    hit_dice: str
+    speed: dict[str, int | bool | str]
+    strength: int
+    dexterity: int
+    constitution: int
+    intelligence: int
+    wisdom: int
+    charisma: int
+    strength_save: int | None
+    dexterity_save: int | None
+    constitution_save: int | None
+    intelligence_save: int | None
+    wisdom_save: int | None
+    charisma_save: int | None
+    skills: dict[str, int]
+    damage_vulnerabilities: str
+    damage_resistances: str
+    damage_immunities: str
+    condition_immunities: str
+    senses: str
+    languages: str
+    special_abilities: list[BestiaryAction] | None
+    actions: list[BestiaryAction] | None
+    bonus_actions: list[BestiaryAction] | None
+    reactions: list[BestiaryAction] | None
+    legendary_desc: str
+    legendary_actions: list[BestiaryAction] | None
+    desc: str
+    spell_list: list[str]
+
+
 class BestiaryDisplay(BaseModel):
     model_config = ConfigDict(strict=True, extra="ignore", hide_input_in_errors=True)
 
     inline: str
     sizes: list[int]
+    responsive: bool = False
 
     @field_validator("inline")
     @classmethod

@@ -8,14 +8,16 @@ import re
 from html import escape
 from textwrap import wrap
 
-from ..data_models import BestiaryDisplay, CustomCreature
+from ..data_models import BestiaryDisplay, StatblockCreature
+
+TWO_COLUMN_HEIGHT = 900
 
 _STYLE = """
 body { margin: 0; }
 stat-block {
   display: inline-block;
   margin: 20px;
-  width: 420px;
+  width: min(420px, calc(100% - 40px));
 }
 .bar {
   height: 5px;
@@ -68,8 +70,14 @@ h3 {
   font-weight: normal;
   letter-spacing: 1px;
   margin: 0 0 0.3em;
+  break-after: avoid-column;
 }
 .content > :last-child { margin-bottom: 0; }
+@media (min-width: 900px) {
+  stat-block.two-column { width: 860px; }
+  stat-block.two-column .content { column-count: 2; column-gap: 40px; }
+  stat-block.two-column .top-stats { break-inside: avoid-column; }
+}
 """
 
 
@@ -97,7 +105,32 @@ def _section(label: str, value: str) -> str:
     return f"<h3>{escape(label)}</h3>{''.join(blocks)}"
 
 
-def render_creature(creature: CustomCreature) -> BestiaryDisplay:
+def _estimated_lines(value: str) -> int:
+    return sum(max(1, len(wrap(line, width=55))) for line in value.split("\n"))
+
+
+def _estimate_height(
+    properties: list[tuple[str, str]], sections: list[tuple[str, str]]
+) -> int:
+    property_lines = sum(
+        _estimated_lines(f"{label} {value}")
+        for label, value in properties if value.strip()
+    )
+    populated_sections = [value for _, value in sections if value.strip()]
+    paragraphs = [
+        paragraph
+        for value in populated_sections
+        for paragraph in re.split(r"\n\s*\n", value.strip())
+    ]
+    section_lines = sum(_estimated_lines(paragraph) for paragraph in paragraphs)
+    # Calibrated against stored single-column blocks; browser sizing is authoritative.
+    return max(300, round(
+        226.42 + 18.54 * property_lines + 15.98 * section_lines
+        + 2.37 * len(paragraphs) + 33.45 * len(populated_sections)
+    ))
+
+
+def render_creature(creature: StatblockCreature) -> BestiaryDisplay:
     subtitle = f"{creature.size} {creature.type}"
     if creature.alignment:
         subtitle += f", {creature.alignment}"
@@ -138,9 +171,12 @@ def render_creature(creature: CustomCreature) -> BestiaryDisplay:
     primary_html = "".join(_property_line(label, value) for label, value in primary)
     secondary_html = "".join(_property_line(label, value) for label, value in secondary)
     sections_html = "".join(_section(label, value) for label, value in sections)
+    height = _estimate_height(primary + secondary, sections)
+    two_columns = height >= TWO_COLUMN_HEIGHT
+    block_class = ' class="two-column"' if two_columns else ""
     html = (
         '<!doctype html><html><head><meta charset="utf-8">'
-        f"<style>{_STYLE}</style></head><body><stat-block>"
+        f"<style>{_STYLE}</style></head><body><stat-block{block_class}>"
         '<div class="bar"></div><div class="content">'
         f'<h1>{escape(creature.name)}</h1><p class="subtitle">{escape(subtitle)}</p>'
         f'<div class="top-stats"><div class="rule"></div>{primary_html}'
@@ -148,9 +184,4 @@ def render_creature(creature: CustomCreature) -> BestiaryDisplay:
         f'<div class="rule"></div>{secondary_html}<div class="rule"></div></div>'
         f'{sections_html}</div><div class="bar"></div></stat-block></body></html>'
     )
-    lines = sum(
-        sum(max(1, len(wrap(line, width=45))) for line in value.split("\n"))
-        for _, value in primary + secondary + sections if value.strip()
-    )
-    height = max(500, 300 + lines * 25 + sum(35 for _, value in sections if value.strip()))
-    return BestiaryDisplay(inline=html, sizes=[height, 460])
+    return BestiaryDisplay(inline=html, sizes=[height, 900 if two_columns else 460], responsive=True)

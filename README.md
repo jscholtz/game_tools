@@ -63,7 +63,7 @@ Both roles get the other tabs.
   `message_injection.py` provides the external text-screening client used for
   chat messages and private notes.
 - `stat_blocks.py` renders Bestiary stat blocks in sandboxed frames.
-- `statblock_renderer/` generates custom statblock HTML and CSS in Python.
+- `statblock_renderer/` generates statblock HTML and CSS in Python.
   Its styling is adapted from [statblock5e](https://github.com/Valloric/statblock5e)
   under Apache-2.0; the license is included in that directory.
 
@@ -126,8 +126,8 @@ not stored. Background, story, and initiative bonus are stored in the player's
 `private_data` document.
 
 Character, private-note, chat message, and public-board data are validated at
-the MongoDB boundary, as are login records and bestiary index and display
-projections. Private notes must be a list of objects with string
+the MongoDB boundary, as are login records and bestiary index and creature
+records. Private notes must be a list of objects with string
 `id`, `text`, and `created_at` fields; an absent field means no notes. Existing
 string-valued `notes` fields must be migrated to that format before the affected
 players can use their notes. Invalid values are reported and are not overwritten.
@@ -136,17 +136,27 @@ The DM-only **Bestiary** searches the `creatures.basic_list` MongoDB collection
 and custom entries in `game_helper.custom_bestiary` by name, type, challenge
 rating, size, and source. Filters appear on the left;
 the matching creature selector and stat block appear on the right. Selecting a
-result loads its HTML stat block from `creatures.display` in a sandboxed frame,
-with external resources blocked. Search fields and selected stat blocks are
-cached for the app's lifetime; restart the app to pick up database changes.
+result generates its stat block from `creatures.basic_list` in a sandboxed
+frame, with external resources blocked. Search fields and standard creature
+records are cached; restart the app to pick up database changes.
 Custom entries are read live and appear under the **Custom** source. The DM-only
 **Custom Bestiary Editor** creates and edits creatures, including ability scores,
 statistics, and free-text traits and action sections. Name, type, size, armor
 class, speed, positive hit points, and a non-negative numeric or fractional
 challenge rating are required. Edits use revision checks to avoid overwriting
-concurrent changes. Custom stat blocks use Python-generated HTML and CSS; text is
-escaped and displayed in the same sandbox as standard stat blocks. Saved
+concurrent changes. All stat blocks use Python-generated HTML and CSS; text is
+escaped and displayed in a sandbox. Saved
 creatures can be added to initiative from either tab.
+Statblock initial height is estimated from wrapped text, paragraphs, and
+sections. The estimate was calibrated against 2,439 precomputed single-column
+blocks; on a 488-block holdout, mean absolute error was 23 px and the 90th
+percentile was 46 px. These are measurements of the older renderer, not a
+guarantee for generated blocks. Browser layout determines the final height in
+both the Bestiary and initiative popup; the estimated height is the initial
+fallback if sizing is unavailable. Blocks estimated at 900 px or taller
+use two columns when the available frame is at least 900 px wide; otherwise
+they remain single-column. Standard creature descriptions and spell-reference
+URLs appear in the Notes section when present.
 The DM can add a selected creature to the initiative tracker with a chosen
 name, its listed hit points, and a chosen initiative (default 0). The name
 defaults to the creature's name. Each click adds a separate combatant; use the
@@ -179,8 +189,10 @@ Start Streamlit:
 uv run streamlit run main.py
 ```
 
-MongoDB collections used: `logins`, `private_data`, `chats`, `public_data`, `custom_bestiary`, and
-`initiative` in `game_helper`, plus `basic_list` and `display` in `creatures`.
+MongoDB collections used by the app: `logins`, `private_data`, `chats`,
+`public_data`, `custom_bestiary`, and `initiative` in `game_helper`, plus
+`basic_list` in `creatures`. The legacy data-validation test also reads
+`creatures.display`.
 
 Before upgrading another database, migrate older data: initiative combatants
 need explicit HP and visibility fields; public notes must use `image:` references

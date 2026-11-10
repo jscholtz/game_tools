@@ -2,13 +2,14 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from .database import (
-    create_custom_creature, load_bestiary_display, load_bestiary_index,
-    load_custom_creature, load_custom_creatures, update_custom_creature,
+    create_custom_creature, load_bestiary_index, load_custom_creature,
+    load_custom_creatures, load_standard_creature, update_custom_creature,
 )
 from .data_models import BestiaryDisplay, BestiaryEntry, CustomCreature
 from .initiative_service import add_bestiary_combatant
 from .principal import Principal
 from .statblock_renderer import render_creature
+from .statblock_renderer.standard import adapt_standard_creature
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ def get_bestiary_display(principal: Principal, slug: str) -> BestiaryDisplay:
     principal.require_dm()
     if slug.startswith("custom:"):
         return render_creature(load_custom_creature(slug))
-    return load_bestiary_display(slug)
+    return render_creature(adapt_standard_creature(load_standard_creature(slug)))
 
 
 def get_custom_creatures(principal: Principal) -> list[CustomCreature]:

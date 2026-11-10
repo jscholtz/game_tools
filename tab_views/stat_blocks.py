@@ -6,25 +6,7 @@ from .data_models import BestiaryDisplay
 
 FRAME_PADDING = 50
 
-
-def _prepare_stat_block(display: BestiaryDisplay) -> tuple[str, int, int]:
-    html = display.inline
-    sizes = display.sizes
-    policy = (
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-        "img-src data:; font-src data:; base-uri 'none'; form-action 'none'"
-    )
-    meta = f'<meta http-equiv="Content-Security-Policy" content="{policy}">'
-    return html.replace("<head>", f"<head>{meta}", 1), sizes[0], sizes[1]
-
-
-def render_stat_block(display: BestiaryDisplay) -> None:
-    try:
-        html, height, width = _prepare_stat_block(display)
-    except ValueError as error:
-        st.error(str(error))
-        return
-    resize_script = """
+_RESIZE_SCRIPT = """
 <script>
 (() => {
     const block = document.querySelector("stat-block");
@@ -40,25 +22,49 @@ def render_stat_block(display: BestiaryDisplay) -> None:
 })();
 </script>
 """
-    html = html.replace("</body>", f"{resize_script}</body>", 1)
+
+_RESIZE_LISTENER = (
+    'window.addEventListener("message", (event) => {'
+    '  if (event.source !== frame.contentWindow || '
+    '      event.data?.type !== "bestiary-height" || '
+    '      !Number.isFinite(event.data.height) || event.data.height <= 0 || '
+    '      event.data.height > 100000) return;'
+    f'  frame.style.height = (Math.ceil(event.data.height) + {FRAME_PADDING}) + "px";'
+    '});'
+)
+
+
+def _prepare_stat_block(display: BestiaryDisplay) -> tuple[str, int, int]:
+    html = display.inline
+    sizes = display.sizes
+    policy = (
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+        "img-src data:; font-src data:; base-uri 'none'; form-action 'none'"
+    )
+    meta = f'<meta http-equiv="Content-Security-Policy" content="{policy}">'
+    html = html.replace("<head>", f"<head>{meta}", 1)
+    return html.replace("</body>", f"{_RESIZE_SCRIPT}</body>", 1), sizes[0], sizes[1]
+
+
+def render_stat_block(display: BestiaryDisplay) -> None:
+    try:
+        html, height, width = _prepare_stat_block(display)
+    except ValueError as error:
+        st.error(str(error))
+        return
     height += 2 * FRAME_PADDING
     width += 2 * FRAME_PADDING
+    frame_width = f"width: 100%; max-width: {width}px" if display.responsive else f"width: {width}px"
     st.iframe(
         '<style>body { margin: 0; }</style>'
         '<iframe id="stat-block" title="Creature stat block" sandbox="allow-scripts" '
         f'srcdoc="{escape(html, quote=True)}" '
-        f'style="display: block; width: {width}px; height: {height}px; border: 0;"></iframe>'
+        f'style="display: block; {frame_width}; height: {height}px; border: 0;"></iframe>'
         '<script>'
         'const frame = document.getElementById("stat-block");'
-        'window.addEventListener("message", (event) => {'
-        '  if (event.source !== frame.contentWindow || '
-        '      event.data?.type !== "bestiary-height" || '
-        '      !Number.isFinite(event.data.height) || event.data.height <= 0 || '
-        '      event.data.height > 100000) return;'
-        f'  frame.style.height = (Math.ceil(event.data.height) + {FRAME_PADDING}) + "px";'
-        '});'
+        f'{_RESIZE_LISTENER}'
         '</script>',
-        width=width,
+        width="stretch" if display.responsive else width,
         height="content",
         alt="Creature stat block",
     )
@@ -71,14 +77,19 @@ def render_stat_block_tab_link(display: BestiaryDisplay, creature_name: str) -> 
         st.error(str(error))
         return
 
+    frame_width = (
+        f'width: 100%; max-width: {width + 2 * FRAME_PADDING}px;'
+        if display.responsive else f'width: {width + 2 * FRAME_PADDING}px;'
+    )
     popup = (
         '<!doctype html><html><head><meta charset="utf-8">'
         f'<title>{escape(creature_name)}</title>'
         '<style>body { margin: 0; } iframe { border: 0; display: block; }</style>'
-        '</head><body><iframe title="Creature stat block" sandbox="allow-scripts" '
+        '</head><body><iframe id="stat-block" title="Creature stat block" sandbox="allow-scripts" '
         f'srcdoc="{escape(html, quote=True)}" '
-        f'width="{width + 2 * FRAME_PADDING}" height="{height + 2 * FRAME_PADDING}">'
-        '</iframe></body></html>'
+        f'style="{frame_width} height: {height + 2 * FRAME_PADDING}px;">'
+        '</iframe><script>const frame = document.getElementById("stat-block");'
+        f'{_RESIZE_LISTENER}</script></body></html>'
     )
     payload = json.dumps(popup).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     st.iframe(

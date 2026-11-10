@@ -1,9 +1,15 @@
 from dataclasses import dataclass
+from uuid import uuid4
 
-from .database import load_bestiary_display, load_bestiary_index
-from .data_models import BestiaryDisplay, BestiaryEntry
+from .database import (
+    create_custom_creature, load_bestiary_index, load_custom_creature,
+    load_custom_creatures, load_standard_creature, update_custom_creature,
+)
+from .data_models import BestiaryDisplay, BestiaryEntry, CustomCreature
 from .initiative_service import add_bestiary_combatant
 from .principal import Principal
+from .statblock_renderer import render_creature
+from .statblock_renderer.standard import adapt_standard_creature
 
 
 @dataclass(frozen=True)
@@ -25,12 +31,37 @@ class BestiaryOptions:
 
 def get_bestiary_index(principal: Principal) -> list[BestiaryEntry]:
     principal.require_dm()
-    return load_bestiary_index()
+    return load_bestiary_index() + [
+        creature.as_bestiary_entry() for creature in load_custom_creatures()
+    ]
 
 
 def get_bestiary_display(principal: Principal, slug: str) -> BestiaryDisplay:
     principal.require_dm()
-    return load_bestiary_display(slug)
+    if slug.startswith("custom:"):
+        return render_creature(load_custom_creature(slug))
+    return render_creature(adapt_standard_creature(load_standard_creature(slug)))
+
+
+def get_custom_creatures(principal: Principal) -> list[CustomCreature]:
+    principal.require_dm()
+    return sorted(load_custom_creatures(), key=lambda creature: (creature.name.casefold(), creature.slug))
+
+
+def save_custom_creature(
+    principal: Principal, values: dict[str, str | int | float], original: CustomCreature | None
+) -> CustomCreature:
+    principal.require_dm()
+    creature = CustomCreature.model_validate({
+        **values,
+        "slug": original.slug if original else f"custom:{uuid4().hex}",
+        "revision": uuid4().hex,
+    })
+    if original is None:
+        create_custom_creature(creature)
+    else:
+        update_custom_creature(creature, original.revision)
+    return creature
 
 
 def bestiary_options(creatures: list[BestiaryEntry]) -> BestiaryOptions:

@@ -1,3 +1,5 @@
+from fractions import Fraction
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -22,11 +24,130 @@ class BestiaryEntry(BaseModel):
     hit_points: int | None = None
 
 
+class StatblockCreature(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True)
+
+    name: str
+    type: str
+    size: str
+    alignment: str = ""
+    challenge_rating: str
+    armor_class: str
+    hit_points: int = Field(ge=1)
+    hit_dice: str = ""
+    speed: str
+    strength: int = Field(ge=1)
+    dexterity: int = Field(ge=1)
+    constitution: int = Field(ge=1)
+    intelligence: int = Field(ge=1)
+    wisdom: int = Field(ge=1)
+    charisma: int = Field(ge=1)
+    saving_throws: str = ""
+    skills: str = ""
+    damage_vulnerabilities: str = ""
+    damage_resistances: str = ""
+    damage_immunities: str = ""
+    condition_immunities: str = ""
+    senses: str = ""
+    languages: str = ""
+    traits: str = ""
+    actions: str = ""
+    bonus_actions: str = ""
+    reactions: str = ""
+    legendary_actions: str = ""
+    lair_actions: str = ""
+    notes: str = ""
+
+    @field_validator("name", "type", "size", "armor_class", "speed")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field must not be empty.")
+        return value
+
+    @field_validator("challenge_rating")
+    @classmethod
+    def validate_challenge_rating(cls, value: str) -> str:
+        value = value.strip()
+        try:
+            rating = float(Fraction(value))
+        except (ValueError, ZeroDivisionError, OverflowError) as error:
+            raise ValueError("Challenge rating must be a non-negative number or fraction.") from error
+        if rating < 0 or rating == float("inf"):
+            raise ValueError("Challenge rating must be a non-negative number or fraction.")
+        return value
+
+
+class CustomCreature(StatblockCreature):
+    slug: str
+    revision: str
+
+    def as_bestiary_entry(self) -> BestiaryEntry:
+        return BestiaryEntry(
+            slug=self.slug, name=self.name, type=self.type, size=self.size,
+            challenge_rating=self.challenge_rating, cr=float(Fraction(self.challenge_rating)),
+            document__title="Custom", hit_points=self.hit_points,
+        )
+
+
+class BestiaryAction(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore", hide_input_in_errors=True)
+
+    name: str
+    desc: str
+
+
+class StandardCreature(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore", hide_input_in_errors=True)
+
+    slug: str
+    name: str
+    type: str
+    subtype: str
+    size: str
+    alignment: str
+    challenge_rating: str
+    armor_class: int
+    armor_desc: str | None
+    hit_points: int
+    hit_dice: str
+    speed: dict[str, int | bool | str]
+    strength: int
+    dexterity: int
+    constitution: int
+    intelligence: int
+    wisdom: int
+    charisma: int
+    strength_save: int | None
+    dexterity_save: int | None
+    constitution_save: int | None
+    intelligence_save: int | None
+    wisdom_save: int | None
+    charisma_save: int | None
+    skills: dict[str, int]
+    damage_vulnerabilities: str
+    damage_resistances: str
+    damage_immunities: str
+    condition_immunities: str
+    senses: str
+    languages: str
+    special_abilities: list[BestiaryAction] | None
+    actions: list[BestiaryAction] | None
+    bonus_actions: list[BestiaryAction] | None
+    reactions: list[BestiaryAction] | None
+    legendary_desc: str
+    legendary_actions: list[BestiaryAction] | None
+    desc: str
+    spell_list: list[str]
+
+
 class BestiaryDisplay(BaseModel):
     model_config = ConfigDict(strict=True, extra="ignore", hide_input_in_errors=True)
 
     inline: str
     sizes: list[int]
+    responsive: bool = False
 
     @field_validator("inline")
     @classmethod

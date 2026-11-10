@@ -60,6 +60,8 @@ def render_bestiary_tab(principal: Principal) -> None:
             return
 
         creature = next(entry for entry in matches if entry.slug == selected)
+        if selected.startswith("custom:"):
+            st.caption("Edit this creature in the Custom Bestiary Editor tab.")
         try:
             hit_points = creature_hit_points(creature)
         except ValueError as error:

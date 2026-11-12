@@ -27,3 +27,13 @@ class InitiativeTracker(BaseModel):
 
     combatants: list[Combatant]
     current_turn_id: str | None
+
+
+class SavedEncounter(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True)
+
+    id: str
+    name: str
+    created_at: str
+    saved_order: int | None
+    tracker: InitiativeTracker

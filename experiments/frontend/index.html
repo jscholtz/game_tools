@@ -18,11 +18,11 @@
 </head>
 <body>
   <h1>Split chat experiment</h1>
-  <p class="warning">Demo only: login does not secure chat. Anyone with backend access can read, send, or impersonate messages. Do not share private information.</p>
+  <p class="warning">Experiment only: chat is shared with every authenticated user. Do not use for sensitive information.</p>
 
   <section id="login-view">
-    <h2>Demo login</h2>
-    <p>Demo accounts: <strong>player1 / pass1</strong> and <strong>player2 / pass2</strong>.</p>
+    <h2>Login</h2>
+    <p>Create local accounts using the backend setup instructions.</p>
     <form id="login-form">
       <label for="backend-url">Backend URL</label>
       <input id="backend-url" type="url" value="http://127.0.0.1:5000" required>
@@ -37,6 +37,7 @@
 
   <section id="chat-view" hidden>
     <h2>Shared chat: <span id="current-user"></span></h2>
+    <button id="logout-button" type="button">Log out</button>
     <p id="connection-status" role="status">Connecting...</p>
     <div id="chat-box" role="log" aria-label="Messages" aria-live="polite"></div>
     <form id="message-form">
@@ -58,8 +59,10 @@
       document.getElementById("backend-url").value = location.origin;
     }
     let socket;
-    let loggedInUser;
+    let token;
+    let backendOrigin;
     let sending = false;
+    const storageKey = "split-chat-session";
 
     function updateControls() {
       const disabled = !socket || !socket.connected || sending;
@@ -80,12 +83,13 @@
       try {
         backend = new URL(document.getElementById("backend-url").value);
         if (!["http:", "https:"].includes(backend.protocol) ||
+            (backend.protocol === "http:" && !["localhost", "127.0.0.1"].includes(backend.hostname)) ||
             backend.username || backend.password || backend.pathname !== "/" ||
             backend.search || backend.hash) {
           throw new Error("Backend URL must be an HTTP(S) origin.");
         }
       } catch {
-        error.textContent = "Enter a valid backend origin, such as http://127.0.0.1:5000.";
+        error.textContent = "Enter an HTTPS backend origin, or an HTTP localhost origin.";
         return;
       }
 
@@ -108,12 +112,11 @@
           error.textContent = data.message || `Login failed (${response.status}).`;
           return;
         }
-        loggedInUser = data.username;
+        token = data.token;
+        backendOrigin = backend.origin;
+        sessionStorage.setItem(storageKey, JSON.stringify({ token, backend: backendOrigin }));
         document.getElementById("password").value = "";
-        document.getElementById("current-user").textContent = loggedInUser;
-        document.getElementById("login-view").hidden = true;
-        document.getElementById("chat-view").hidden = false;
-        connectChat(backend.origin);
+        enterChat(data.username);
       } catch (reason) {
         console.error("Login failed:", reason);
         error.textContent = "Cannot complete login. Check the backend URL, origin settings, and server.";
@@ -122,22 +125,105 @@
       }
     });
 
-    function connectChat(backend) {
-      socket = io(backend, { transports: ["websocket"] });
+    function enterChat(username) {
+      document.getElementById("current-user").textContent = username;
+      document.getElementById("login-view").hidden = true;
+      document.getElementById("chat-view").hidden = false;
+      connectChat();
+    }
+
+    function showLogin(message) {
+      if (socket) socket.disconnect();
+      socket = null;
+      token = null;
+      sessionStorage.removeItem(storageKey);
+      document.getElementById("chat-box").replaceChildren();
+      document.getElementById("chat-view").hidden = true;
+      document.getElementById("login-view").hidden = false;
+      document.getElementById("login-error").textContent = message;
+      updateControls();
+    }
+
+    async function verifySession() {
+      const response = await fetch(`${backendOrigin}/api/verify`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "ngrok-skip-browser-warning": "true",
+        },
+      });
+      if (response.status === 401 || response.status === 422) {
+        showLogin("Session expired or invalid. Log in again.");
+        return null;
+      }
+      if (!response.ok) throw new Error(`Session verification failed (${response.status}).`);
+      return response.json();
+    }
+
+    async function restoreSession() {
+      const saved = sessionStorage.getItem(storageKey);
+      if (!saved) return;
+      try {
+        const session = JSON.parse(saved);
+        const url = new URL(session.backend);
+        if (!["http:", "https:"].includes(url.protocol) ||
+            (url.protocol === "http:" && !["localhost", "127.0.0.1"].includes(url.hostname)) ||
+            url.origin !== session.backend ||
+            typeof session.token !== "string" || !session.token) {
+          throw new Error("Invalid saved session.");
+        }
+        backendOrigin = session.backend;
+        token = session.token;
+        document.getElementById("backend-url").value = backendOrigin;
+        const data = await verifySession();
+        if (data) {
+          if (typeof io !== "function") throw new Error("Socket.IO client failed to load.");
+          enterChat(data.username);
+        }
+      } catch (reason) {
+        console.error("Could not restore session:", reason);
+        document.getElementById("login-error").textContent =
+          "Could not restore session. Check the backend and refresh to retry, or log in again.";
+      }
+    }
+
+    function connectChat() {
+      socket = io(backendOrigin, { transports: ["websocket"], auth: { token } });
       socket.on("connect", () => {
         connectionStatus.textContent = "Connected.";
         updateControls();
+        socket.timeout(5000).emit("get_history", (error, result) => {
+          if (error || !result || result.status !== "success") {
+            messageError.textContent = result?.message || "Could not load chat history.";
+          }
+        });
       });
-      socket.on("disconnect", () => {
+      socket.on("disconnect", async (reason) => {
+        if (reason === "io client disconnect") return;
         connectionStatus.textContent = "Disconnected. Reconnecting...";
         updateControls();
+        if (reason === "io server disconnect") {
+          try {
+            const data = await verifySession();
+            if (data && socket) socket.connect();
+          } catch (error) {
+            console.error("Session verification failed:", error);
+            connectionStatus.textContent = "Cannot verify session. Refresh to retry.";
+          }
+        }
       });
-      socket.on("connect_error", (reason) => {
+      socket.on("connect_error", async (reason) => {
         console.error("Chat connection failed:", reason);
         connectionStatus.textContent = "Connection failed. Check the backend, origin settings, and WebSocket support.";
         updateControls();
+        if (reason.message.startsWith("Connection rejected")) {
+          try {
+            await verifySession();
+          } catch (error) {
+            console.error("Session verification failed:", error);
+          }
+        }
       });
-      socket.on("receive_message", (data) => {
+      function appendMessage(data) {
         if (!data || typeof data.user !== "string" || typeof data.text !== "string") {
           console.error("Invalid message received:", data);
           return;
@@ -149,7 +235,16 @@
         row.append(sender, document.createTextNode(data.text));
         box.append(row);
         box.scrollTop = box.scrollHeight;
+      }
+      socket.on("chat_history", (messages) => {
+        if (!Array.isArray(messages)) {
+          messageError.textContent = "Invalid chat history received.";
+          return;
+        }
+        document.getElementById("chat-box").replaceChildren();
+        messages.forEach(appendMessage);
       });
+      socket.on("receive_message", appendMessage);
     }
 
     messageForm.addEventListener("submit", (event) => {
@@ -159,7 +254,7 @@
       messageError.textContent = "";
       sending = true;
       updateControls();
-      socket.timeout(5000).emit("send_message", { user: loggedInUser, text }, (error, result) => {
+      socket.timeout(5000).emit("send_message", { text }, (error, result) => {
         sending = false;
         updateControls();
         if (error) {
@@ -171,6 +266,27 @@
         }
       });
     });
+
+    document.getElementById("logout-button").addEventListener("click", async () => {
+      try {
+        const response = await fetch(`${backendOrigin}/api/logout`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "ngrok-skip-browser-warning": "true",
+          },
+        });
+        if (!response.ok && response.status !== 401 && response.status !== 422) {
+          throw new Error(`Logout failed (${response.status}).`);
+        }
+        showLogin("Logged out.");
+      } catch (error) {
+        console.error("Logout failed:", error);
+        messageError.textContent = "Logout failed. Check the backend and try again.";
+      }
+    });
+
+    restoreSession();
   </script>
 </body>
 </html>

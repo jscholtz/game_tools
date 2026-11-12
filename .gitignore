@@ -12,3 +12,6 @@ wheels/
 # Local Streamlit credentials
 .streamlit/secrets.toml
 .env
+
+# Local experiment credentials, signing key, and chat data
+experiments/backend/data/

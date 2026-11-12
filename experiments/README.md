@@ -1,17 +1,16 @@
 # Split chat experiment
 
 This is a disposable local proof of concept, separate from the Streamlit app.
-The static frontend runs in the browser; the Flask-SocketIO backend checks demo
-credentials and broadcasts messages to one shared room. It does not use MongoDB,
-Redis, campaign data, or existing accounts. Messages are not saved and new or
-reconnecting clients do not receive history.
+The static frontend runs in the browser; the Flask-SocketIO backend checks local
+credentials and broadcasts messages to authenticated users in one shared room.
+It does not use MongoDB, Redis, campaign data, or existing accounts. Chat
+messages are stored in a local JSON file; the last 20 are restored on reconnect.
 
-**This is not secure authentication.** Login only changes the screen; the
-backend does not authenticate socket connections or message events. Anyone who
-can reach the backend can read and send messages or impersonate a demo user.
-Both demo passwords are public. Do not use real credentials, campaign data, or
-private messages. An ngrok tunnel makes the backend publicly reachable. This
-development server is not suitable for production.
+**Experiment only:** chat is shared with every authenticated user. Tokens are
+stored in browser session storage, where injected JavaScript can read them.
+There is no login rate limiting, account administration UI, or production
+server. An ngrok tunnel makes the login publicly reachable. Do not use
+campaign credentials or sensitive messages.
 
 ## Run locally
 
@@ -21,6 +20,14 @@ experiment's dependencies:
 ```bash
 python3 -m venv experiments/.venv
 experiments/.venv/bin/python -m pip install -r experiments/backend/requirements.txt
+```
+
+Create accounts while the backend is stopped. Pick a separate password of at
+least 12 characters for each; it is entered interactively:
+
+```bash
+experiments/.venv/bin/python experiments/backend/manage_users.py player1
+experiments/.venv/bin/python experiments/backend/manage_users.py player2
 ```
 
 In one terminal, start the backend:
@@ -36,9 +43,24 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory experiments/frontend
 ```
 
 Open `http://127.0.0.1:8000` in two browser tabs. The default backend URL is
-`http://127.0.0.1:5000`. Log in with `player1` / `pass1` in one tab and
-`player2` / `pass2` in the other. The Socket.IO client is loaded from a CDN, so
-the browser needs internet access.
+`http://127.0.0.1:5000`. Log in with the accounts you created. Each tab stores
+its own session and restores it on refresh; a newly opened tab can inherit a
+copy of its opener's session. Tokens expire after eight hours. Log out to
+revoke the current token and disconnect its sockets. The Socket.IO client is
+loaded from a CDN, so the browser needs internet access.
+
+The backend creates `backend/data/` on first use. `users.json` stores salted,
+one-way scrypt password hashes, not reversible encrypted passwords.
+`jwt.key` is the signing secret, `history.json` holds chat messages, and
+`revoked.json` tracks logged-out tokens until they expire. These local files
+are git-ignored; keep them private, back them up if needed, and never put them
+in the frontend directory. Deleting the signing key invalidates all tokens;
+deleting history or revocation data loses those records. The user-management
+command also updates passwords, but changing a password does not invalidate
+already issued tokens. Stop the backend before editing users; invalidate all
+sessions by removing the signing key while it is stopped if needed. The JSON
+storage is intended for one backend process; do not run multiple instances or
+edit its files concurrently.
 
 The backend permits frontend origins `http://127.0.0.1:8000` and
 `http://localhost:8000` by default. These checks are not authentication and do

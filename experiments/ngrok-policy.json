@@ -1,0 +1,17 @@
+{
+  "on_http_request": [
+    {
+      "expressions": [
+        "req.url.path.startsWith('/api/') || req.url.path.startsWith('/socket.io/')"
+      ],
+      "actions": [
+        {
+          "type": "forward-internal",
+          "config": {
+            "url": "https://split-chat-backend.internal"
+          }
+        }
+      ]
+    }
+  ]
+}

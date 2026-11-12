@@ -4,12 +4,16 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
-from .initiative_models import Combatant, InitiativeTracker
+from .initiative_models import Combatant, InitiativeTracker, SavedEncounter
 from .initiative_store import (
+    create_encounter,
+    delete_encounter,
+    list_encounters,
+    load_encounter,
     load_tracker,
-    load_tracker_default,
+    overwrite_encounter,
+    rename_encounter,
     save_tracker,
-    save_tracker_snapshot,
 )
 from .principal import Principal
 
@@ -55,15 +59,53 @@ def get_player_tracker(principal: Principal) -> PlayerTracker:
 
 def get_dm_tracker(principal: Principal) -> InitiativeTracker:
     principal.require_dm()
-    return load_tracker()
+    return _SAVE_EXECUTOR.submit(load_tracker).result()
 
 
-def get_dm_tracker_default(principal: Principal) -> InitiativeTracker:
+def list_dm_encounters(principal: Principal) -> list[SavedEncounter]:
     principal.require_dm()
-    tracker = load_tracker_default()
-    if tracker is None:
-        raise ValueError("No valid default initiative tracker is configured.")
-    return tracker
+    return list_encounters()
+
+
+def _encounter_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise ValueError("Enter an encounter name.")
+    if len(name) > 200:
+        raise ValueError("Encounter name must be at most 200 characters.")
+    return name
+
+
+def create_dm_encounter(principal: Principal, name: str) -> SavedEncounter:
+    principal.require_dm()
+    name = _encounter_name(name)
+    return _SAVE_EXECUTOR.submit(lambda: create_encounter(name, load_tracker())).result()
+
+
+def overwrite_dm_encounter(principal: Principal, encounter_id: str) -> None:
+    principal.require_dm()
+    _SAVE_EXECUTOR.submit(lambda: overwrite_encounter(encounter_id, load_tracker())).result()
+
+
+def load_dm_encounter(principal: Principal, encounter_id: str) -> InitiativeTracker:
+    principal.require_dm()
+
+    def load_and_save() -> InitiativeTracker:
+        tracker = load_encounter(encounter_id).tracker
+        save_tracker(tracker)
+        return tracker
+
+    return _SAVE_EXECUTOR.submit(load_and_save).result()
+
+
+def rename_dm_encounter(principal: Principal, encounter_id: str, name: str) -> None:
+    principal.require_dm()
+    rename_encounter(encounter_id, _encounter_name(name))
+
+
+def delete_dm_encounter(principal: Principal, encounter_id: str) -> None:
+    principal.require_dm()
+    delete_encounter(encounter_id)
 
 
 def save_dm_tracker(principal: Principal, tracker: InitiativeTracker) -> None:
@@ -74,11 +116,6 @@ def save_dm_tracker(principal: Principal, tracker: InitiativeTracker) -> None:
 def queue_dm_tracker_save(principal: Principal, tracker: InitiativeTracker) -> Future[None]:
     principal.require_dm()
     return _SAVE_EXECUTOR.submit(save_tracker, deepcopy(tracker))
-
-
-def save_dm_tracker_snapshot(principal: Principal, tracker: InitiativeTracker) -> None:
-    principal.require_dm()
-    save_tracker_snapshot(tracker)
 
 
 def make_combatant(name: str, initiative: int, hit_points: int) -> Combatant:

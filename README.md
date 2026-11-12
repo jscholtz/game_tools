@@ -35,7 +35,7 @@ The main interaction path is:
 | **Notes** | Create, edit, and delete private notes. | Not shown. |
 | **Public Board** | Read notes and images marked visible to players. | Create, edit, delete, and set note visibility; manage images. |
 | **Messages with DM** | Chat with the DM; conversation refreshes automatically. | View player conversations, unread counts, and send replies. |
-| **Initiative Tracker** | See visible combatants, initiative, and turn status. | Manage combatants, HP, visibility, turn order, and tracker snapshots. |
+| **Initiative Tracker** | See visible combatants, initiative, and turn status. | Manage combatants, HP, visibility, turn order, and saved encounters. |
 | **Bestiary** | Not shown. | Filter creatures, view stat blocks, and add creatures to initiative. |
 | **Custom Bestiary Editor** | Not shown. | Create and edit custom creatures and add saved creatures to initiative. |
 | **Credits** | View third-party attribution. | View third-party attribution. |
@@ -82,23 +82,41 @@ Character edits, initiative combatant updates, board edits, bestiary filtering,
 authentication checks, and message/note screening live in their respective
 services; views handle input, presentation, and session state.
 
-On first initiative load, if Redis has no tracker state, the app copies the
-saved tracker and default from MongoDB into Redis. Redis holds live tracker
-state. Use the DM's **Save snapshot** button to save the current state to
-MongoDB's `initiative` collection as a recovery snapshot; this preserves the
-configured default tracker. If Redis loses its state, the saved snapshot is
-used to initialize it.
+Redis holds the shared live initiative tracker. The DM can prepare a tracker
+and save it as a named encounter in MongoDB's existing `initiative` collection
+using **Saved encounters**. Encounter records and recovery-order metadata use
+separate documents in that collection.
+Preparation changes the live tracker immediately, so players can see visible
+combatants even before an encounter is saved. Saving captures the persisted
+tracker, including combatant order, initiative, current and maximum HP, death,
+visibility, creature links, and the current turn. Save pending HP edits first.
+
+The DM can create, load, rename, overwrite, and delete encounters; duplicate
+names are allowed and entries show their creation time and unique identifier.
+Loading replaces the live tracker after confirmation and immediately affects
+the player view. Combat changes affect only the live tracker until explicitly
+saved as a new encounter or used to overwrite an existing one. Overwrites and
+deletions also require confirmation. Players cannot manage or view saved
+encounters, and continue to see only visible live combatants.
+
+Saved encounters replace the old **Save snapshot** and **Reset to default**
+controls. If Redis loses its tracker, the app restores the most recently
+explicitly saved or overwritten encounter that still exists. If it is deleted,
+the next most recently saved encounter is used. If no eligible encounter
+exists, the tracker starts empty. Loading or renaming an encounter does not
+change recovery order. Recovery restores a saved copy, not later unsaved combat
+changes.
 
 Every initiative combatant has a boolean `visible` field. The DM can toggle
 **Visible** per combatant; unchecked entries are omitted from the player view
 but remain in the DM's turn order. Manually added combatants start visible;
-Bestiary additions start hidden. Existing current and default tracker states
-in Redis and MongoDB must have this field before deploying this version.
+Bestiary additions start hidden. Existing tracker states in Redis and saved
+encounters in MongoDB must have this field.
 Initiative state is validated when loaded and saved: `current_turn_id` must
 be a string or null, combatant fields must have their expected types, and hit
-points must be between zero and the positive maximum. Legacy combatants
-must have explicit current and maximum HP. Unrecognized tracker and combatant
-fields are preserved.
+points must be between zero and the positive maximum. Combatants must have
+explicit current and maximum HP. Unrecognized tracker and combatant fields are
+preserved.
 
 The DM's Character tab shows cards for the player login names listed in
 `character_cards.toml`, in the configured order. Names are matched

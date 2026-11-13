@@ -4,6 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_MESSAGE_LENGTH = 1000
 MAX_NOTE_LENGTH = 100_000
+MAX_BOARD_IMAGES = 5
+MAX_IMAGE_BYTES = 2 * 1024 * 1024
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 1024
 
@@ -60,13 +62,23 @@ class NoteUpdate(NoteRequest):
     revision: int = Field(ge=1)
 
 
+class BoardImage(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    media_type: Literal["image/png", "image/jpeg", "image/gif", "image/webp"]
+    data: str = Field(min_length=1, max_length=4 * ((MAX_IMAGE_BYTES + 2) // 3), repr=False)
+
+
 class BoardNoteRequest(NoteRequest):
     visible: bool
+    images: list[BoardImage] | None = Field(default=None, max_length=MAX_BOARD_IMAGES)
 
 
 class BoardNote(BoardNoteRequest):
     revision: int = Field(ge=1)
     updated_at: str | None = None
+    images: list[BoardImage] = Field(default_factory=list, max_length=MAX_BOARD_IMAGES)
 
     header: str = Field(default="Untitled", min_length=1, max_length=200)
 

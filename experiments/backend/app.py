@@ -1,3 +1,6 @@
+import base64
+import binascii
+import io
 import json
 import os
 import secrets
@@ -7,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,10 +24,11 @@ from flask_jwt_extended.exceptions import JWTDecodeError
 from flask_socketio import SocketIO, emit
 from jwt.exceptions import PyJWTError
 from pydantic import ValidationError
+from PIL import Image, UnidentifiedImageError
 from werkzeug.security import check_password_hash
 
 from models import (
-    MAX_NOTE_LENGTH, MIN_PASSWORD_LENGTH, BoardNote, BoardNoteRequest, BoardNoteUpdate,
+    MAX_IMAGE_BYTES, MAX_NOTE_LENGTH, MIN_PASSWORD_LENGTH, BoardImage, BoardNote, BoardNoteRequest, BoardNoteUpdate,
     LoginRequest, MessageRequest, NoteRequest, NoteUpdate, PrivateMessage, Snapshot, SocketAuth,
 )
 
@@ -163,6 +168,7 @@ def is_revoked(jti):
 
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024
 app.config["JWT_SECRET_KEY"] = signing_key()
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=8)
 jwt = JWTManager(app)
@@ -270,6 +276,24 @@ def notes(note_id=None):
     return jsonify(status="success", id=note_id, **entries[note_id])
 
 
+def validate_board_images(images):
+    formats = {"PNG": "image/png", "JPEG": "image/jpeg", "GIF": "image/gif", "WEBP": "image/webp"}
+    for image in images:
+        try:
+            data = base64.b64decode(image.data, validate=True)
+            if not data or len(data) > MAX_IMAGE_BYTES:
+                raise ValueError("Image must be at most 2 MiB.")
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(io.BytesIO(data)) as decoded:
+                    if formats.get(decoded.format) != image.media_type:
+                        raise ValueError("Unsupported or mismatched image format.")
+                    decoded.verify()
+        except (binascii.Error, UnidentifiedImageError, OSError, Image.DecompressionBombError,
+                Image.DecompressionBombWarning) as error:
+            raise ValueError("Invalid or oversized image.") from error
+
+
 @app.route("/api/board", methods=["GET", "POST"])
 @app.route("/api/board/<note_id>", methods=["PUT"])
 @jwt_required()
@@ -287,7 +311,8 @@ def board(note_id=None):
             query = {} if is_dm else {"visible": True}
             entries = [
                 {"id": entry["_id"], "header": entry["header"], "content": entry["content"],
-                 "visible": entry["visible"], "revision": entry["revision"], "updated_at": entry["updated_at"]}
+                 "visible": entry["visible"], "revision": entry["revision"], "updated_at": entry["updated_at"],
+                 "images": entry["images"]}
                 for entry in database.board.find(query)
             ]
             response = jsonify(notes=entries)
@@ -308,10 +333,18 @@ def board(note_id=None):
                 return jsonify(status="error", message="Note changed elsewhere. Reload before editing."), 409
         else:
             note_id = secrets.token_hex(16)
+        images = incoming.images
+        if images is None:
+            images = [BoardImage.model_validate(image) for image in existing["images"]] if existing else []
+        try:
+            validate_board_images(images)
+        except ValueError as error:
+            return jsonify(status="error", message=str(error)), 400
         note = BoardNote(
             header=incoming.header, content=incoming.content, visible=incoming.visible,
             revision=existing["revision"] + 1 if existing else 1,
             updated_at=datetime.now(timezone.utc).isoformat(),
+            images=images,
         )
         database.board.replace_one({"_id": note_id}, {"_id": note_id, **note.model_dump()}, upsert=True)
         try:

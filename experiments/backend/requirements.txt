@@ -4,4 +4,5 @@ Flask-SocketIO>=5.3,<6
 Flask-JWT-Extended>=4.6,<5
 mongomock>=4.3,<5
 pydantic>=2,<3
+Pillow>=10,<12
 simple-websocket>=1.0,<2

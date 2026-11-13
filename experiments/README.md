@@ -13,6 +13,11 @@ out warns about unsaved changes. An unread-chat indicator is not implemented yet
 
 Both roles have a Board tab. The `dm` account can create and edit Markdown
 notes, choosing whether each is visible to players; new notes start hidden.
+The DM can attach up to five PNG, JPEG, GIF, or WebP images per board note,
+up to 2 MiB each. Images appear after the note text; edit a note to add images
+or mark existing attachments for removal. Changes take effect when the note is
+saved. Attachments follow the note's visibility and are included in the local
+snapshot; image metadata is not removed.
 The DM sees both published and hidden notes, while the server returns only
 published notes to players. Saving persists immediately and notifies connected
 clients to refresh; use Refresh board if disconnected or a refresh fails.
@@ -28,7 +33,7 @@ The snapshot is upgraded when the backend starts; back it up before upgrading,
 because older backend versions cannot read the new personal-note format.
 Deletion is not implemented.
 
-**Experiment only:** messages and notes are not encrypted on the server. Tokens are
+**Experiment only:** messages, notes and images are not encrypted on the server. Tokens are
 stored in browser session storage, where injected JavaScript can read them.
 There is no login rate limiting, account administration UI, or production
 server. An ngrok tunnel makes the login publicly reachable. Do not use
@@ -45,7 +50,7 @@ experiments/.venv/bin/python -m pip install -r experiments/backend/requirements.
 ```
 
 For an existing experiment environment, rerun the `pip install` command to
-install the experiment's current dependencies, including Pydantic.
+install the experiment's current dependencies, including Pydantic and Pillow.
 
 Create accounts while the backend is stopped. Pick a separate password of at
 least 8 characters for each; it is entered interactively:
@@ -89,7 +94,7 @@ private chat. Messages from the old shared chat have no recipient and are not
 displayed in private conversations.
 
 The backend creates `backend/data/` on first use. Accounts, chat, personal notes,
-board notes and token
+board notes, board attachments and token
 revocations live in mongomock collections. Passwords are stored as salted,
 one-way scrypt hashes, not reversible encrypted passwords. `jwt.key` remains
 the separate signing secret.

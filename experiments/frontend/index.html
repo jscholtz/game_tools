@@ -22,6 +22,7 @@
     .board-note { border: 1px solid #aaa; padding: 1rem; margin-top: 1rem; overflow-wrap: anywhere; }
     .board-note img { max-width: 100%; }
     .board-note pre { overflow-x: auto; }
+    #board-existing-images img { display: block; max-width: 12rem; max-height: 12rem; }
     .note-date { color: #777; font-size: .8rem; }
   </style>
 </head>
@@ -79,6 +80,9 @@
           <input id="board-header" maxlength="200" required>
           <label for="board-input">Board note (Markdown)</label>
           <textarea id="board-input" rows="10" maxlength="100000" required></textarea>
+          <div id="board-existing-images"></div>
+          <label for="board-images">Add images (PNG, JPEG, GIF, WebP; up to 5 images, 2 MiB each)</label>
+          <input id="board-images" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple>
           <label><input id="board-visible" type="checkbox"> Visible to players</label>
           <button id="board-save" type="submit">Save note</button>
           <button id="board-cancel" type="button">Clear editor</button>
@@ -112,6 +116,8 @@
     const boardEditor = document.getElementById("board-editor");
     const boardInput = document.getElementById("board-input");
     const boardHeader = document.getElementById("board-header");
+    const boardImages = document.getElementById("board-images");
+    const boardExistingImages = document.getElementById("board-existing-images");
     const boardVisible = document.getElementById("board-visible");
     const boardSave = document.getElementById("board-save");
     const boardCancel = document.getElementById("board-cancel");
@@ -134,6 +140,7 @@
     let boardSaving = false;
     let loggingOut = false;
     let boardEdit = null;
+    let boardAttachments = [];
     let boardBaseline = { header: "", content: "", visible: false };
     let boardLoadVersion = 0;
     const panes = new Map();
@@ -286,7 +293,8 @@
 
     function boardDirty() {
       return boardHeader.value !== boardBaseline.header || boardInput.value !== boardBaseline.content ||
-        boardVisible.checked !== boardBaseline.visible;
+        boardVisible.checked !== boardBaseline.visible || boardImages.files.length > 0 ||
+        boardExistingImages.querySelector("input:checked") !== null;
     }
 
     function hasUnsavedChanges() {
@@ -304,8 +312,26 @@
       boardHeader.value = boardBaseline.header;
       boardInput.value = boardBaseline.content;
       boardVisible.checked = boardBaseline.visible;
+      boardAttachments = note ? note.images.slice() : [];
+      boardImages.value = "";
+      boardExistingImages.replaceChildren();
+      boardAttachments.forEach((image, index) => {
+        const label = document.createElement("label");
+        const preview = document.createElement("img");
+        preview.src = `data:${image.media_type};base64,${image.data}`;
+        preview.alt = image.name;
+        preview.addEventListener("error", () => {
+          boardStatus.textContent = `Could not display image: ${image.name}.`;
+        });
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = String(index);
+        label.append(preview, checkbox, document.createTextNode(` Remove ${image.name}`));
+        boardExistingImages.append(label);
+      });
       boardInput.disabled = false;
       boardHeader.disabled = false;
+      boardImages.disabled = false;
       boardVisible.disabled = false;
       boardSave.disabled = false;
       boardCancel.disabled = false;
@@ -322,7 +348,10 @@
         if (!response.ok) throw new Error(`Loading board failed (${response.status}).`);
         const data = await response.json();
         if (!Array.isArray(data.notes) || data.notes.some((note) =>
-          !validNote(note) || typeof note.visible !== "boolean")) {
+          !validNote(note) || typeof note.visible !== "boolean" || !Array.isArray(note.images) ||
+          note.images.some((image) => !image || typeof image.name !== "string" ||
+            !["image/png", "image/jpeg", "image/gif", "image/webp"].includes(image.media_type) ||
+            typeof image.data !== "string"))) {
           throw new Error("Invalid board response.");
         }
         if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
@@ -332,6 +361,20 @@
         const openNotes = new Set(Array.from(boardList.querySelectorAll("details[open]"), (el) => el.dataset.id));
         const entries = data.notes.map((note) => {
           const article = renderNote(note, openNotes.has(note.id));
+          for (const image of note.images) {
+            const figure = document.createElement("figure");
+            const element = document.createElement("img");
+            element.src = `data:${image.media_type};base64,${image.data}`;
+            element.alt = image.name;
+            element.loading = "lazy";
+            element.addEventListener("error", () => {
+              boardStatus.textContent = `Could not display image: ${image.name}.`;
+            });
+            const caption = document.createElement("figcaption");
+            caption.textContent = image.name;
+            figure.append(element, caption);
+            article.append(figure);
+          }
           if (!boardEditor.hidden) {
             const visibility = document.createElement("p");
             visibility.textContent = note.visible ? "Visible to players" : "Hidden from players";
@@ -368,6 +411,35 @@
       resetBoardEditor();
       boardStatus.textContent = "";
     });
+    async function readBoardImage(file) {
+      if (file.size === 0 || file.size > 2 * 1024 * 1024) {
+        throw new Error(`${file.name}: image must be between 1 byte and 2 MiB.`);
+      }
+      if (file.name.length > 255) throw new Error("Image filename exceeds 255 characters.");
+      const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+      let mediaType;
+      if (signature.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => signature[i] === v)) {
+        mediaType = "image/png";
+      } else if (signature.length >= 3 && signature[0] === 255 && signature[1] === 216 && signature[2] === 255) {
+        mediaType = "image/jpeg";
+      } else if (signature.length >= 6 && ["GIF87a", "GIF89a"].includes(String.fromCharCode(...signature.slice(0, 6)))) {
+        mediaType = "image/gif";
+      } else if (signature.length >= 12 && String.fromCharCode(...signature.slice(0, 4)) === "RIFF" &&
+                 String.fromCharCode(...signature.slice(8, 12)) === "WEBP") {
+        mediaType = "image/webp";
+      } else {
+        throw new Error(`${file.name}: unsupported image format.`);
+      }
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+        reader.onabort = () => reject(new Error(`Reading ${file.name} was interrupted.`));
+        reader.onload = () => resolve(reader.result.split(",", 2)[1]);
+        reader.readAsDataURL(file);
+      });
+      return { name: file.name, media_type: mediaType, data };
+    }
+
     document.getElementById("board-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       if (boardSaving) return;
@@ -382,11 +454,20 @@
       boardSaving = true;
       boardInput.disabled = true;
       boardHeader.disabled = true;
+      boardImages.disabled = true;
+      for (const checkbox of boardExistingImages.querySelectorAll("input")) checkbox.disabled = true;
       boardVisible.disabled = true;
       boardSave.disabled = true;
       boardCancel.disabled = true;
       boardStatus.textContent = "Saving board note...";
       try {
+        const removed = new Set(Array.from(boardExistingImages.querySelectorAll("input:checked"),
+          (checkbox) => Number(checkbox.value)));
+        const kept = boardAttachments.filter((_, index) => !removed.has(index));
+        const files = Array.from(boardImages.files);
+        if (kept.length + files.length > 5) throw new Error("A note can have at most 5 images.");
+        payload.images = [...kept, ...await Promise.all(files.map(readBoardImage))];
+        if (version !== sessionVersion) return;
         const response = await fetch(`${backendOrigin}/api/board${editing ? `/${encodeURIComponent(editing.id)}` : ""}`, {
           method: editing ? "PUT" : "POST",
           headers: {
@@ -412,6 +493,8 @@
           boardSaving = false;
           boardInput.disabled = false;
           boardHeader.disabled = false;
+          boardImages.disabled = false;
+          for (const checkbox of boardExistingImages.querySelectorAll("input")) checkbox.disabled = false;
           boardVisible.disabled = false;
           boardSave.disabled = false;
           boardCancel.disabled = false;
@@ -765,6 +848,8 @@
       notesCancel.disabled = true;
       boardInput.disabled = true;
       boardHeader.disabled = true;
+      boardImages.disabled = true;
+      for (const checkbox of boardExistingImages.querySelectorAll("input")) checkbox.disabled = true;
       boardVisible.disabled = true;
       boardSave.disabled = true;
       boardCancel.disabled = true;
@@ -792,6 +877,8 @@
         }
         boardInput.disabled = false;
         boardHeader.disabled = false;
+        boardImages.disabled = false;
+        for (const checkbox of boardExistingImages.querySelectorAll("input")) checkbox.disabled = false;
         boardVisible.disabled = false;
         boardSave.disabled = false;
         boardCancel.disabled = false;

@@ -36,7 +36,43 @@ class MessageRequest(BaseModel):
 class NoteRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True)
 
-    content: str = Field(max_length=MAX_NOTE_LENGTH)
+    header: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=MAX_NOTE_LENGTH)
+
+    @field_validator("header", "content")
+    @classmethod
+    def not_blank(cls, value):
+        if not value.strip():
+            raise ValueError("Note header and content must not be blank.")
+        return value
+
+
+class PersonalNote(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    header: str
+    content: str
+    revision: int = Field(ge=1)
+    updated_at: str | None = None
+
+
+class NoteUpdate(NoteRequest):
+    revision: int = Field(ge=1)
+
+
+class BoardNoteRequest(NoteRequest):
+    visible: bool
+
+
+class BoardNote(BoardNoteRequest):
+    revision: int = Field(ge=1)
+    updated_at: str | None = None
+
+    header: str = Field(default="Untitled", min_length=1, max_length=200)
+
+
+class BoardNoteUpdate(BoardNoteRequest):
+    revision: int = Field(ge=1)
 
 
 class StoredMessage(BaseModel):
@@ -67,7 +103,21 @@ class Snapshot(BaseModel):
     history: list[PrivateMessage | StoredMessage]
     revoked: dict[str, int]
     users: dict[str, UserRecord] = Field(default_factory=dict, repr=False)
-    notes: dict[str, str] = Field(default_factory=dict, repr=False)
+    notes: dict[str, dict[str, PersonalNote]] = Field(default_factory=dict, repr=False)
+    board: dict[str, BoardNote] = Field(default_factory=dict, repr=False)
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def migrate_legacy_notes(cls, value):
+        if not isinstance(value, dict):
+            return value
+        return {
+            username: {"legacy": {
+                "header": "Personal notes", "content": notes, "revision": 1,
+                "updated_at": None,
+            }} if isinstance(notes, str) else notes
+            for username, notes in value.items()
+        }
 
     @field_validator("users", mode="before")
     @classmethod

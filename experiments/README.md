@@ -7,12 +7,26 @@ It uses an in-memory mongomock database, not a MongoDB server, Redis, campaign
 data, or existing campaign accounts. The last 20 messages per conversation are
 shown on reconnect. The DM sees one chat window per player account (four for
 four players); each player sees only their own conversation with the DM.
-Players also have Chat and Notes tabs. Notes are private to the authenticated
-player, loaded on login, and saved using the Save notes button. Switching tabs
-keeps unsaved edits; leaving or logging out warns about unsaved changes.
-Notes have a 100,000-character limit. Separate sessions editing the same
-account do not merge changes: the last successful save wins. An unread-chat
-indicator is not implemented yet.
+Players also have Chat and Notes tabs. Players can create and edit multiple
+private Markdown notes. Switching tabs keeps unsaved edits; leaving or logging
+out warns about unsaved changes. An unread-chat indicator is not implemented yet.
+
+Both roles have a Board tab. The `dm` account can create and edit Markdown
+notes, choosing whether each is visible to players; new notes start hidden.
+The DM sees both published and hidden notes, while the server returns only
+published notes to players. Saving persists immediately and notifies connected
+clients to refresh; use Refresh board if disconnected or a refresh fails.
+Concurrent DM edits to the same note are rejected rather than overwritten:
+copy unsaved edits if needed, refresh the board and reopen the note.
+Personal and board notes have headers and expand from a collapsed header to
+show their content and last-save time in the browser's local time. Each note
+is limited to 100,000 characters and each header to 200 characters. Concurrent
+edits to the same personal note are also rejected; refresh notes and reopen it.
+Existing personal text becomes one note titled "Personal notes"; existing board
+notes become "Untitled". Their original save time is unknown until edited.
+The snapshot is upgraded when the backend starts; back it up before upgrading,
+because older backend versions cannot read the new personal-note format.
+Deletion is not implemented.
 
 **Experiment only:** messages and notes are not encrypted on the server. Tokens are
 stored in browser session storage, where injected JavaScript can read them.
@@ -65,21 +79,24 @@ Open `http://127.0.0.1:8000` in two browser tabs. The default backend URL is
 its own session and restores it on refresh; a newly opened tab can inherit a
 copy of its opener's session. Tokens expire after eight hours. Log out to
 revoke the current token and disconnect its sockets. The Socket.IO client is
-loaded from a CDN, so the browser needs internet access.
+loaded from a CDN, as are the Markdown parser and HTML sanitizer used by the
+board, so the browser needs internet access. Board Markdown is sanitized
+before display; embedded images may load from external URLs.
 Login and session verification return the account role. The server verifies
 participants on every message and filters history and live delivery. Only the
 account named `dm` can use the DM chat; additional DM-role accounts cannot use
 private chat. Messages from the old shared chat have no recipient and are not
 displayed in private conversations.
 
-The backend creates `backend/data/` on first use. Accounts, chat, notes and token
+The backend creates `backend/data/` on first use. Accounts, chat, personal notes,
+board notes and token
 revocations live in mongomock collections. Passwords are stored as salted,
 one-way scrypt hashes, not reversible encrypted passwords. `jwt.key` remains
 the separate signing secret.
 
 Collections are saved in `mongo-snapshot.json` on startup, after each change,
 and on normal shutdown (including Ctrl+C and SIGTERM). A snapshot write must
-succeed before a message, note, logout or account update is acknowledged. When
+succeed before a message, personal or board note, logout or account update is acknowledged. When
 there is no snapshot, existing `users.json`, `history.json` and `revoked.json`
 are imported. Older snapshots without a `users` field import accounts from
 `users.json` while preserving the snapshot's messages and revocations. The
@@ -90,7 +107,7 @@ restoring or editing data or running the account-management command.
 These local files are git-ignored; keep them private, back them up if needed,
 and never put them in the frontend directory. Messages, notes and snapshots are not
 encrypted. Deleting the signing key invalidates all tokens; deleting the
-snapshot loses saved accounts, messages, notes and revocations, and may re-import stale legacy
+snapshot loses saved accounts, messages, personal and board notes, and revocations, and may re-import stale legacy
 data. An abrupt termination can bypass shutdown; the most recent successful
 per-change snapshot remains available. The user-management
 command also updates passwords, but changing a password does not invalidate

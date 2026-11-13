@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Split chat experiment</title>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js" defer></script>
   <style>
     body { font-family: sans-serif; max-width: 70rem; margin: 2rem auto; padding: 0 1rem; }
     label { display: block; margin-top: 1rem; }
     input, textarea { box-sizing: border-box; padding: .5rem; width: 100%; }
+    input[type="checkbox"] { width: auto; }
     button { margin-top: 1rem; padding: .5rem 1rem; }
     [role="tab"][aria-selected="true"] { font-weight: bold; border-bottom: 3px solid currentColor; }
     #conversations { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; }
@@ -16,6 +19,10 @@
     .chat-box div { overflow-wrap: anywhere; white-space: pre-wrap; }
     .warning { background: #fff3cd; color: #332701; padding: .75rem; }
     .error { color: #a00000; }
+    .board-note { border: 1px solid #aaa; padding: 1rem; margin-top: 1rem; overflow-wrap: anywhere; }
+    .board-note img { max-width: 100%; }
+    .board-note pre { overflow-x: auto; }
+    .note-date { color: #777; font-size: .8rem; }
   </style>
 </head>
 <body>
@@ -40,9 +47,10 @@
   <section id="chat-view" hidden>
     <h2>Signed in: <span id="current-user"></span></h2>
     <button id="logout-button" type="button">Log out</button>
-    <div id="player-tabs" role="tablist" aria-label="Player sections" hidden>
+    <div id="player-tabs" role="tablist" aria-label="Sections" hidden>
       <button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel">Chat</button>
       <button id="notes-tab" type="button" role="tab" aria-selected="false" aria-controls="notes-panel" tabindex="-1">Notes</button>
+      <button id="board-tab" type="button" role="tab" aria-selected="false" aria-controls="board-panel" tabindex="-1">Board</button>
     </div>
     <div id="chat-panel" role="region" aria-label="Chat">
       <p id="connection-status" role="status">Connecting...</p>
@@ -51,12 +59,34 @@
     </div>
     <div id="notes-panel" role="tabpanel" aria-labelledby="notes-tab" hidden>
       <form id="notes-form">
-        <label for="notes-input">Personal notes</label>
-        <textarea id="notes-input" rows="15" maxlength="100000" disabled></textarea>
-        <button id="notes-save" type="submit" disabled>Save notes</button>
+        <label for="notes-header">Header</label>
+        <input id="notes-header" maxlength="200" required disabled>
+        <label for="notes-input">Personal note (Markdown)</label>
+        <textarea id="notes-input" rows="10" maxlength="100000" required disabled></textarea>
+        <button id="notes-save" type="submit" disabled>Save note</button>
+        <button id="notes-cancel" type="button" disabled>Clear editor</button>
       </form>
-      <button id="notes-retry" type="button" hidden>Retry loading notes</button>
+      <button id="notes-retry" type="button">Refresh notes</button>
       <p id="notes-status" role="status"></p>
+      <div id="notes-list"></div>
+    </div>
+    <div id="board-panel" role="tabpanel" aria-labelledby="board-tab" hidden>
+      <h3>Public board</h3>
+      <p>Only published notes are visible to players.</p>
+      <div id="board-editor" hidden>
+        <form id="board-form">
+          <label for="board-header">Header</label>
+          <input id="board-header" maxlength="200" required>
+          <label for="board-input">Board note (Markdown)</label>
+          <textarea id="board-input" rows="10" maxlength="100000" required></textarea>
+          <label><input id="board-visible" type="checkbox"> Visible to players</label>
+          <button id="board-save" type="submit">Save note</button>
+          <button id="board-cancel" type="button">Clear editor</button>
+        </form>
+      </div>
+      <button id="board-refresh" type="button">Refresh board</button>
+      <p id="board-status" role="status"></p>
+      <div id="board-list"></div>
     </div>
   </section>
 
@@ -71,9 +101,22 @@
     const chatPanel = document.getElementById("chat-panel");
     const notesPanel = document.getElementById("notes-panel");
     const notesInput = document.getElementById("notes-input");
+    const notesHeader = document.getElementById("notes-header");
+    const notesCancel = document.getElementById("notes-cancel");
+    const notesList = document.getElementById("notes-list");
     const notesSave = document.getElementById("notes-save");
     const notesRetry = document.getElementById("notes-retry");
     const notesStatus = document.getElementById("notes-status");
+    const boardTab = document.getElementById("board-tab");
+    const boardPanel = document.getElementById("board-panel");
+    const boardEditor = document.getElementById("board-editor");
+    const boardInput = document.getElementById("board-input");
+    const boardHeader = document.getElementById("board-header");
+    const boardVisible = document.getElementById("board-visible");
+    const boardSave = document.getElementById("board-save");
+    const boardCancel = document.getElementById("board-cancel");
+    const boardStatus = document.getElementById("board-status");
+    const boardList = document.getElementById("board-list");
     if (location.protocol === "https:") {
       document.getElementById("backend-url").value = location.origin;
     }
@@ -83,9 +126,16 @@
     let currentUser;
     let currentRole;
     let sessionVersion = 0;
-    let savedNotes = "";
+    let notesEdit = null;
+    let notesBaseline = { header: "", content: "" };
+    let notesLoadVersion = 0;
     let notesLoaded = false;
     let notesSaving = false;
+    let boardSaving = false;
+    let loggingOut = false;
+    let boardEdit = null;
+    let boardBaseline = { header: "", content: "", visible: false };
+    let boardLoadVersion = 0;
     const panes = new Map();
     const storageKey = "split-chat-session";
 
@@ -156,27 +206,26 @@
       sessionVersion++;
       currentUser = username;
       currentRole = role;
-      playerTabs.hidden = role !== "player";
-      chatPanel.setAttribute("role", role === "player" ? "tabpanel" : "region");
-      if (role === "player") {
-        chatPanel.setAttribute("aria-labelledby", "chat-tab");
-        chatPanel.removeAttribute("aria-label");
-      } else {
-        chatPanel.removeAttribute("aria-labelledby");
-        chatPanel.setAttribute("aria-label", "Chat");
-      }
+      playerTabs.hidden = false;
+      notesTab.hidden = role !== "player";
+      boardEditor.hidden = username !== "dm" || role !== "dm";
+      chatPanel.setAttribute("role", "tabpanel");
+      chatPanel.setAttribute("aria-labelledby", "chat-tab");
+      chatPanel.removeAttribute("aria-label");
       selectTab(chatTab);
       document.getElementById("current-user").textContent = username;
       document.getElementById("login-view").hidden = true;
       document.getElementById("chat-view").hidden = false;
       connectChat();
       if (role === "player") loadNotes();
+      loadBoard();
     }
 
     function showLogin(message, discardNotes = false) {
-      if (!discardNotes && notesLoaded && (notesSaving || notesInput.value !== savedNotes) &&
-          !confirm(`${message}\nDiscard unsaved notes and return to login?`)) {
+      if (!discardNotes && hasUnsavedChanges() &&
+          !confirm(`${message}\nDiscard unsaved changes and return to login?`)) {
         notesStatus.textContent = "Session ended. Copy unsaved notes before logging in again.";
+        boardStatus.textContent = "Session ended. Copy unsaved board edits before logging in again.";
         return;
       }
       sessionVersion++;
@@ -187,13 +236,23 @@
       conversations.replaceChildren();
       panes.clear();
       notesInput.value = "";
-      savedNotes = "";
+      notesHeader.value = "";
+      notesEdit = null;
+      notesBaseline = { header: "", content: "" };
+      notesLoadVersion++;
+      notesList.replaceChildren();
       notesLoaded = false;
       notesSaving = false;
       notesInput.disabled = true;
+      notesHeader.disabled = true;
       notesSave.disabled = true;
-      notesRetry.hidden = true;
+      notesCancel.disabled = true;
       notesStatus.textContent = "";
+      boardLoadVersion++;
+      boardSaving = false;
+      boardList.replaceChildren();
+      boardStatus.textContent = "";
+      resetBoardEditor();
       document.getElementById("chat-view").hidden = true;
       document.getElementById("login-view").hidden = false;
       document.getElementById("login-error").textContent = message;
@@ -201,30 +260,215 @@
     }
 
     function selectTab(selected) {
-      for (const tab of [chatTab, notesTab]) {
+      for (const tab of [chatTab, notesTab, boardTab]) {
         const active = tab === selected;
         tab.setAttribute("aria-selected", String(active));
         tab.tabIndex = active ? 0 : -1;
       }
       chatPanel.hidden = selected !== chatTab;
       notesPanel.hidden = selected !== notesTab;
+      boardPanel.hidden = selected !== boardTab;
     }
 
     playerTabs.addEventListener("click", (event) => {
-      if (event.target === chatTab || event.target === notesTab) selectTab(event.target);
+      if ([chatTab, notesTab, boardTab].includes(event.target)) selectTab(event.target);
     });
     playerTabs.addEventListener("keydown", (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
-      const selected = event.key === "Home" ? chatTab : event.key === "End" ? notesTab :
-        (document.activeElement === chatTab ? notesTab : chatTab);
+      const tabs = [chatTab, notesTab, boardTab].filter((tab) => !tab.hidden);
+      const index = tabs.indexOf(document.activeElement);
+      const selected = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs[tabs.length - 1] :
+        tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
       selectTab(selected);
       selected.focus();
     });
 
+    function boardDirty() {
+      return boardHeader.value !== boardBaseline.header || boardInput.value !== boardBaseline.content ||
+        boardVisible.checked !== boardBaseline.visible;
+    }
+
+    function hasUnsavedChanges() {
+      return (notesLoaded && (notesSaving || notesDirty())) ||
+        (!boardEditor.hidden && (boardSaving || boardDirty()));
+    }
+
+    function resetBoardEditor(note = null) {
+      boardEdit = note ? { id: note.id, revision: note.revision } : null;
+      boardBaseline = {
+        header: note ? note.header : "",
+        content: note ? note.content : "",
+        visible: note ? note.visible : false,
+      };
+      boardHeader.value = boardBaseline.header;
+      boardInput.value = boardBaseline.content;
+      boardVisible.checked = boardBaseline.visible;
+      boardInput.disabled = false;
+      boardHeader.disabled = false;
+      boardVisible.disabled = false;
+      boardSave.disabled = false;
+      boardCancel.disabled = false;
+      boardCancel.textContent = note ? "Cancel editing" : "Clear editor";
+    }
+
+    async function loadBoard() {
+      const version = sessionVersion;
+      const loadVersion = ++boardLoadVersion;
+      try {
+        const response = await fetch(`${backendOrigin}/api/board`, {
+          headers: { "Authorization": "Bearer " + token, "ngrok-skip-browser-warning": "true" },
+        });
+        if (!response.ok) throw new Error(`Loading board failed (${response.status}).`);
+        const data = await response.json();
+        if (!Array.isArray(data.notes) || data.notes.some((note) =>
+          !validNote(note) || typeof note.visible !== "boolean")) {
+          throw new Error("Invalid board response.");
+        }
+        if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+          throw new Error("Markdown rendering libraries failed to load.");
+        }
+        if (version !== sessionVersion || loadVersion !== boardLoadVersion) return;
+        const openNotes = new Set(Array.from(boardList.querySelectorAll("details[open]"), (el) => el.dataset.id));
+        const entries = data.notes.map((note) => {
+          const article = renderNote(note, openNotes.has(note.id));
+          if (!boardEditor.hidden) {
+            const visibility = document.createElement("p");
+            visibility.textContent = note.visible ? "Visible to players" : "Hidden from players";
+            article.append(visibility);
+          }
+          if (!boardEditor.hidden) {
+            const edit = document.createElement("button");
+            edit.type = "button";
+            edit.textContent = "Edit";
+            edit.addEventListener("click", () => {
+              if (boardSaving) return;
+              if (boardDirty() && !confirm("Discard unsaved board edits?")) return;
+              resetBoardEditor(note);
+              boardStatus.textContent = "Editing board note.";
+              boardInput.focus();
+            });
+            article.append(edit);
+          }
+          appendNoteDate(article, note);
+          return article;
+        });
+        boardList.replaceChildren(...entries);
+        boardStatus.textContent = entries.length ? "" : "No board notes to display.";
+      } catch (error) {
+        if (version !== sessionVersion || loadVersion !== boardLoadVersion) return;
+        console.error("Could not load board:", error);
+        boardStatus.textContent = "Could not load the board or Markdown renderer. Check your connection and refresh.";
+      }
+    }
+
+    document.getElementById("board-refresh").addEventListener("click", loadBoard);
+    boardCancel.addEventListener("click", () => {
+      if (boardDirty() && !confirm("Discard unsaved board edits?")) return;
+      resetBoardEditor();
+      boardStatus.textContent = "";
+    });
+    document.getElementById("board-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (boardSaving) return;
+      if (!boardInput.value.trim()) {
+        boardStatus.textContent = "Board note must not be blank.";
+        return;
+      }
+      const version = sessionVersion;
+      const editing = boardEdit;
+      const payload = { header: boardHeader.value, content: boardInput.value, visible: boardVisible.checked };
+      if (editing) payload.revision = editing.revision;
+      boardSaving = true;
+      boardInput.disabled = true;
+      boardHeader.disabled = true;
+      boardVisible.disabled = true;
+      boardSave.disabled = true;
+      boardCancel.disabled = true;
+      boardStatus.textContent = "Saving board note...";
+      try {
+        const response = await fetch(`${backendOrigin}/api/board${editing ? `/${encodeURIComponent(editing.id)}` : ""}`, {
+          method: editing ? "PUT" : "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+            "ngrok-skip-browser-warning": "true",
+          },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok || result.status !== "success") {
+          throw new Error(result.message || `Saving board note failed (${response.status}).`);
+        }
+        if (version !== sessionVersion) return;
+        resetBoardEditor();
+        await loadBoard();
+      } catch (error) {
+        if (version !== sessionVersion) return;
+        console.error("Could not save board note:", error);
+        boardStatus.textContent = `${error.message} Save may have succeeded. Your edits are retained; refresh the board before retrying.`;
+      } finally {
+        if (version === sessionVersion) {
+          boardSaving = false;
+          boardInput.disabled = false;
+          boardHeader.disabled = false;
+          boardVisible.disabled = false;
+          boardSave.disabled = false;
+          boardCancel.disabled = false;
+        }
+      }
+    });
+
+    function validNote(note) {
+      return note && typeof note.id === "string" && typeof note.header === "string" &&
+        typeof note.content === "string" && Number.isInteger(note.revision) &&
+        (note.updated_at === null ||
+          (typeof note.updated_at === "string" && !Number.isNaN(Date.parse(note.updated_at))));
+    }
+
+    function renderNote(note, open = false) {
+      const details = document.createElement("details");
+      details.className = "board-note";
+      details.dataset.id = note.id;
+      details.open = open;
+      const summary = document.createElement("summary");
+      summary.textContent = note.header;
+      const content = document.createElement("div");
+      content.innerHTML = DOMPurify.sanitize(marked.parse(note.content), {
+        USE_PROFILES: { html: true }, FORBID_TAGS: ["style"], FORBID_ATTR: ["style"],
+      });
+      details.append(summary, content);
+      return details;
+    }
+
+    function appendNoteDate(details, note) {
+      const time = document.createElement("p");
+      time.className = "note-date";
+      if (note.updated_at === null) {
+        time.textContent = "Last saved: unknown";
+      } else {
+        const date = new Date(note.updated_at);
+        const pad = (value) => String(value).padStart(2, "0");
+        time.textContent = `Last saved: ${pad(date.getFullYear() % 100)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      }
+      details.append(time);
+    }
+
+    function notesDirty() {
+      return notesHeader.value !== notesBaseline.header || notesInput.value !== notesBaseline.content;
+    }
+
+    function resetNotesEditor(note = null) {
+      notesEdit = note ? { id: note.id, revision: note.revision } : null;
+      notesBaseline = { header: note ? note.header : "", content: note ? note.content : "" };
+      notesHeader.value = notesBaseline.header;
+      notesInput.value = notesBaseline.content;
+      notesCancel.textContent = note ? "Cancel editing" : "Clear editor";
+    }
+
     async function loadNotes() {
       const version = sessionVersion;
-      notesRetry.hidden = true;
+      const loadVersion = ++notesLoadVersion;
       notesStatus.textContent = "Loading notes...";
       try {
         const response = await fetch(`${backendOrigin}/api/notes`, {
@@ -232,61 +476,98 @@
         });
         if (!response.ok) throw new Error(`Loading notes failed (${response.status}).`);
         const data = await response.json();
-        if (typeof data.content !== "string") throw new Error("Invalid notes response.");
-        if (version !== sessionVersion) return;
-        savedNotes = data.content;
-        notesInput.value = savedNotes;
+        if (!Array.isArray(data.notes) || data.notes.some((note) => !validNote(note))) {
+          throw new Error("Invalid notes response.");
+        }
+        if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+          throw new Error("Markdown rendering libraries failed to load.");
+        }
+        if (version !== sessionVersion || loadVersion !== notesLoadVersion) return;
+        const openNotes = new Set(Array.from(notesList.querySelectorAll("details[open]"), (el) => el.dataset.id));
+        const entries = data.notes.map((note) => {
+          const article = renderNote(note, openNotes.has(note.id));
+          const edit = document.createElement("button");
+          edit.type = "button";
+          edit.textContent = "Edit";
+          edit.addEventListener("click", () => {
+            if (notesSaving) return;
+            if (notesDirty() && !confirm("Discard unsaved personal note edits?")) return;
+            resetNotesEditor(note);
+            notesStatus.textContent = "Editing personal note.";
+            notesHeader.focus();
+          });
+          article.append(edit);
+          appendNoteDate(article, note);
+          return article;
+        });
+        notesList.replaceChildren(...entries);
         notesLoaded = true;
-        notesInput.disabled = false;
-        notesSave.disabled = false;
-        notesStatus.textContent = "";
+        if (!notesSaving && !loggingOut) {
+          notesHeader.disabled = false;
+          notesInput.disabled = false;
+          notesSave.disabled = false;
+          notesCancel.disabled = false;
+        }
+        notesStatus.textContent = entries.length ? "" : "No personal notes to display.";
       } catch (error) {
-        if (version !== sessionVersion) return;
+        if (version !== sessionVersion || loadVersion !== notesLoadVersion) return;
         console.error("Could not load notes:", error);
         notesStatus.textContent = "Could not load notes. Check your session and connection, then retry.";
-        notesRetry.hidden = false;
       }
     }
 
     notesRetry.addEventListener("click", loadNotes);
-    notesInput.addEventListener("input", () => {
-      notesStatus.textContent = notesInput.value === savedNotes ? "" : "Unsaved changes.";
+    notesCancel.addEventListener("click", () => {
+      if (notesDirty() && !confirm("Discard unsaved personal note edits?")) return;
+      resetNotesEditor();
+      notesStatus.textContent = "";
     });
     document.getElementById("notes-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!notesLoaded || notesSaving) return;
       const version = sessionVersion;
-      const content = notesInput.value;
+      const editing = notesEdit;
+      const payload = { header: notesHeader.value, content: notesInput.value };
+      if (editing) payload.revision = editing.revision;
       notesSaving = true;
       notesSave.disabled = true;
+      notesInput.disabled = true;
+      notesHeader.disabled = true;
+      notesCancel.disabled = true;
       notesStatus.textContent = "Saving...";
       try {
-        const response = await fetch(`${backendOrigin}/api/notes`, {
-          method: "PUT",
+        const response = await fetch(`${backendOrigin}/api/notes${editing ? `/${encodeURIComponent(editing.id)}` : ""}`, {
+          method: editing ? "PUT" : "POST",
           headers: {
             "Authorization": "Bearer " + token,
             "Content-Type": "application/json",
             "ngrok-skip-browser-warning": "true",
           },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify(payload),
         });
-        if (!response.ok) throw new Error(`Saving notes failed (${response.status}).`);
+        const result = await response.json();
+        if (!response.ok || result.status !== "success") {
+          throw new Error(result.message || `Saving notes failed (${response.status}).`);
+        }
         if (version !== sessionVersion) return;
-        savedNotes = content;
-        notesStatus.textContent = notesInput.value === savedNotes ? "Notes saved." : "Saved; newer changes are unsaved.";
+        resetNotesEditor();
+        await loadNotes();
       } catch (error) {
         if (version !== sessionVersion) return;
         console.error("Could not save notes:", error);
-        notesStatus.textContent = "Could not confirm save. Check your session and connection, then retry.";
+        notesStatus.textContent = `${error.message} Save may have succeeded. Your edits are retained; refresh notes before retrying.`;
       } finally {
         if (version === sessionVersion) {
           notesSaving = false;
           notesSave.disabled = false;
+          notesInput.disabled = false;
+          notesHeader.disabled = false;
+          notesCancel.disabled = false;
         }
       }
     });
     window.addEventListener("beforeunload", (event) => {
-      if (notesLoaded && (notesSaving || notesInput.value !== savedNotes)) event.preventDefault();
+      if (hasUnsavedChanges()) event.preventDefault();
     });
 
     async function verifySession() {
@@ -336,17 +617,19 @@
       socket.on("connect", () => {
         connectionStatus.textContent = "Connected.";
         updateControls();
+        loadBoard();
         socket.timeout(5000).emit("get_history", (error, result) => {
           if (error || !result || result.status !== "success") {
             messageError.textContent = result?.message || "Could not load chat history.";
           }
         });
       });
+      socket.on("board_changed", loadBoard);
       socket.on("disconnect", async (reason) => {
         if (reason === "io client disconnect") return;
         connectionStatus.textContent = "Disconnected. Reconnecting...";
         updateControls();
-        if (reason === "io server disconnect") {
+        if (reason === "io server disconnect" && !loggingOut) {
           try {
             const data = await verifySession();
             if (data && socket) socket.connect();
@@ -467,16 +750,24 @@
     }
 
     document.getElementById("logout-button").addEventListener("click", async () => {
-      if (notesSaving) {
+      if (notesSaving || boardSaving) {
         notesStatus.textContent = "Wait for the current save to finish before logging out.";
+        boardStatus.textContent = "Wait for the current save to finish before logging out.";
         return;
       }
-      if (notesLoaded && notesInput.value !== savedNotes &&
-          !confirm("Discard unsaved notes and log out?")) return;
+      if (hasUnsavedChanges() && !confirm("Discard unsaved changes and log out?")) return;
       const logoutButton = document.getElementById("logout-button");
+      loggingOut = true;
       logoutButton.disabled = true;
       notesInput.disabled = true;
+      notesHeader.disabled = true;
       notesSave.disabled = true;
+      notesCancel.disabled = true;
+      boardInput.disabled = true;
+      boardHeader.disabled = true;
+      boardVisible.disabled = true;
+      boardSave.disabled = true;
+      boardCancel.disabled = true;
       try {
         const response = await fetch(`${backendOrigin}/api/logout`, {
           method: "POST",
@@ -494,10 +785,19 @@
         messageError.textContent = "Logout failed. Check the backend and try again.";
         if (notesLoaded) {
           notesInput.disabled = false;
+          notesHeader.disabled = false;
           notesSave.disabled = false;
+          notesCancel.disabled = false;
           notesStatus.textContent = "Logout failed. Check the backend and try again.";
         }
+        boardInput.disabled = false;
+        boardHeader.disabled = false;
+        boardVisible.disabled = false;
+        boardSave.disabled = false;
+        boardCancel.disabled = false;
+        boardStatus.textContent = "Logout failed. Check the backend and try again.";
       } finally {
+        loggingOut = false;
         logoutButton.disabled = false;
       }
     });

@@ -7,7 +7,7 @@ import sys
 import tempfile
 import threading
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import mongomock
@@ -23,8 +23,8 @@ from pydantic import ValidationError
 from werkzeug.security import check_password_hash
 
 from models import (
-    MAX_NOTE_LENGTH, MIN_PASSWORD_LENGTH, LoginRequest, MessageRequest, NoteRequest,
-    PrivateMessage, Snapshot, SocketAuth,
+    MAX_NOTE_LENGTH, MIN_PASSWORD_LENGTH, BoardNote, BoardNoteRequest, BoardNoteUpdate,
+    LoginRequest, MessageRequest, NoteRequest, NoteUpdate, PrivateMessage, Snapshot, SocketAuth,
 )
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -109,8 +109,12 @@ def load_database():
         database.revocations.insert_one({"_id": jti, "exp": exp})
     for username, account in snapshot.users.items():
         database.users.insert_one({"_id": username, **account.model_dump()})
-    for username, content in snapshot.notes.items():
-        database.notes.insert_one({"_id": username, "content": content})
+    for username, notes in snapshot.notes.items():
+        database.notes.insert_one({
+            "_id": username, "entries": {key: note.model_dump() for key, note in notes.items()}
+        })
+    for note_id, note in snapshot.board.items():
+        database.board.insert_one({"_id": note_id, **note.model_dump()})
     save_database()
 
 
@@ -120,9 +124,13 @@ def save_database():
         for message in database.messages.find().sort("_id", 1)
     ]
     revocations = {entry["_id"]: entry["exp"] for entry in database.revocations.find()}
-    notes = {entry["_id"]: entry["content"] for entry in database.notes.find()}
+    notes = {entry["_id"]: entry["entries"] for entry in database.notes.find()}
+    board = {
+        entry["_id"]: {key: value for key, value in entry.items() if key != "_id"}
+        for entry in database.board.find()
+    }
     snapshot = Snapshot.model_validate(
-        {"history": messages, "revoked": revocations, "users": users(), "notes": notes}
+        {"history": messages, "revoked": revocations, "users": users(), "notes": notes, "board": board}
     )
     write_json(SNAPSHOT_FILE, snapshot.model_dump())
 
@@ -211,9 +219,10 @@ def verify():
     return jsonify(status="valid", username=username, role=account["role"])
 
 
-@app.route("/api/notes", methods=["GET", "PUT"])
+@app.route("/api/notes", methods=["GET", "POST"])
+@app.route("/api/notes/<note_id>", methods=["PUT"])
 @jwt_required()
-def notes():
+def notes(note_id=None):
     username = get_jwt_identity()
     payload = get_jwt()
     with state_lock:
@@ -223,18 +232,33 @@ def notes():
         if account["role"] != "player":
             return jsonify(status="error", message="Notes are available only to players."), 403
         existing = database.notes.find_one({"_id": username})
+        entries = existing["entries"].copy() if existing else {}
         if request.method == "GET":
-            return jsonify(content=existing["content"] if existing else "")
+            response = jsonify(notes=[{"id": key, **note} for key, note in entries.items()])
+            response.headers["Cache-Control"] = "no-store"
+            return response
         try:
-            note = NoteRequest.model_validate(request.get_json(silent=True))
+            model = NoteUpdate if note_id is not None else NoteRequest
+            note = model.model_validate(request.get_json(silent=True))
         except ValidationError:
             return jsonify(
                 status="error",
-                message=f"Provide note text of at most {MAX_NOTE_LENGTH} characters.",
+                message=f"Provide a header and note text of at most {MAX_NOTE_LENGTH} characters.",
             ), 400
-        database.notes.update_one(
-            {"_id": username}, {"$set": {"content": note.content}}, upsert=True
-        )
+        previous = entries.get(note_id) if note_id is not None else None
+        if note_id is not None:
+            if previous is None:
+                return jsonify(status="error", message="Note not found."), 404
+            if not isinstance(note, NoteUpdate) or note.revision != previous["revision"]:
+                return jsonify(status="error", message="Note changed elsewhere. Reload before editing."), 409
+        else:
+            note_id = secrets.token_hex(16)
+        entries[note_id] = {
+            "header": note.header, "content": note.content,
+            "revision": previous["revision"] + 1 if previous else 1,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        database.notes.replace_one({"_id": username}, {"_id": username, "entries": entries}, upsert=True)
         try:
             save_database()
         except (OSError, ValueError, TypeError):
@@ -243,7 +267,65 @@ def notes():
             else:
                 database.notes.replace_one({"_id": username}, existing)
             raise
-    return jsonify(status="success")
+    return jsonify(status="success", id=note_id, **entries[note_id])
+
+
+@app.route("/api/board", methods=["GET", "POST"])
+@app.route("/api/board/<note_id>", methods=["PUT"])
+@jwt_required()
+def board(note_id=None):
+    username = get_jwt_identity()
+    payload = get_jwt()
+    with state_lock:
+        account = database.users.find_one({"_id": username})
+        if is_revoked(payload["jti"]) or account is None:
+            return jsonify(status="error", message="Session expired. Log in again."), 401
+        is_dm = username == "dm" and account["role"] == "dm"
+        if not is_dm and account["role"] != "player":
+            return jsonify(status="error", message="Board is unavailable for this account."), 403
+        if request.method == "GET":
+            query = {} if is_dm else {"visible": True}
+            entries = [
+                {"id": entry["_id"], "header": entry["header"], "content": entry["content"],
+                 "visible": entry["visible"], "revision": entry["revision"], "updated_at": entry["updated_at"]}
+                for entry in database.board.find(query)
+            ]
+            response = jsonify(notes=entries)
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        if not is_dm:
+            return jsonify(status="error", message="Only the dm can edit the board."), 403
+        try:
+            model = BoardNoteUpdate if note_id is not None else BoardNoteRequest
+            incoming = model.model_validate(request.get_json(silent=True))
+        except ValidationError:
+            return jsonify(status="error", message="Invalid board note."), 400
+        existing = database.board.find_one({"_id": note_id}) if note_id is not None else None
+        if note_id is not None:
+            if existing is None:
+                return jsonify(status="error", message="Board note not found."), 404
+            if not isinstance(incoming, BoardNoteUpdate) or incoming.revision != existing["revision"]:
+                return jsonify(status="error", message="Note changed elsewhere. Reload before editing."), 409
+        else:
+            note_id = secrets.token_hex(16)
+        note = BoardNote(
+            header=incoming.header, content=incoming.content, visible=incoming.visible,
+            revision=existing["revision"] + 1 if existing else 1,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        )
+        database.board.replace_one({"_id": note_id}, {"_id": note_id, **note.model_dump()}, upsert=True)
+        try:
+            save_database()
+        except (OSError, ValueError, TypeError):
+            if existing is None:
+                database.board.delete_one({"_id": note_id})
+            else:
+                database.board.replace_one({"_id": note_id}, existing)
+            raise
+        for sid, connection in connections.items():
+            if connection["exp"] > time.time() and not is_revoked(connection["jti"]):
+                socketio.emit("board_changed", to=sid)
+    return jsonify(status="success", id=note_id, **note.model_dump())
 
 
 @app.post("/api/logout")

@@ -284,6 +284,7 @@ dependencies = [
     { name = "flask-cors" },
     { name = "flask-jwt-extended" },
     { name = "flask-socketio" },
+    { name = "mongomock" },
     { name = "pydantic" },
     { name = "pymongo" },
     { name = "python-dotenv" },
@@ -300,6 +301,7 @@ requires-dist = [
     { name = "flask-cors", specifier = ">=6.0.5" },
     { name = "flask-jwt-extended", specifier = ">=4.7.4" },
     { name = "flask-socketio", specifier = ">=5.7.2" },
+    { name = "mongomock", specifier = ">=4.3.0" },
     { name = "pydantic", specifier = ">=2.14.2" },
     { name = "pymongo", specifier = ">=4.19.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
@@ -592,6 +594,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/81/99/157e10966b033b363aeda5263e82596ee232a0b1d082fdbf90aa417ff083/markupsafe-3.0.4-cp315-cp315t-win32.whl", hash = "sha256:e49fb0d1ce92cfa0cb198cc5b1b11cdf9d0638658e2a2db2687e39db7c87fc78", size = 14300, upload-time = "2026-10-02T23:06:53.241Z" },
     { url = "https://files.pythonhosted.org/packages/33/05/55884815414c9706a23deca150b72c25a62109e65b0b6ce232077802c719/markupsafe-3.0.4-cp315-cp315t-win_amd64.whl", hash = "sha256:4f6e0852a0283b1b1fd776eeb7b766a5f440b3e2bd31ab51af3b400585f3965c", size = 14522, upload-time = "2026-10-02T23:06:54.729Z" },
     { url = "https://files.pythonhosted.org/packages/92/f9/ecbde7149e95b8a0f18e16d5d747f7dc06049d5da2e4f77f6f5e4a1f46a8/markupsafe-3.0.4-cp315-cp315t-win_arm64.whl", hash = "sha256:39dbacefc411633db5b4378b066a9aca70a3d7e2922c9e578d825f844026eeba", size = 14417, upload-time = "2026-10-02T23:06:56.246Z" },
+]
+
+[[package]]
+name = "mongomock"
+version = "4.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pytz" },
+    { name = "sentinels" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4d/a4/4a560a9f2a0bec43d5f63104f55bc48666d619ca74825c8ae156b08547cf/mongomock-4.3.0.tar.gz", hash = "sha256:32667b79066fabc12d4f17f16a8fd7361b5f4435208b3ba32c226e52212a8c30", size = 135862, upload-time = "2024-11-16T11:23:25.957Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/4d/8bea712978e3aff017a2ab50f262c620e9239cc36f348aae45e48d6a4786/mongomock-4.3.0-py2.py3-none-any.whl", hash = "sha256:5ef86bd12fc8806c6e7af32f21266c61b6c4ba96096f85129852d1c4fec1327e", size = 64891, upload-time = "2024-11-16T11:23:24.748Z" },
 ]
 
 [[package]]
@@ -1095,6 +1111,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pytz"
+version = "2026.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/b0/168030b0bfcc334cf09fa3313afdb888d892c8a0027324683d1de0ec277e/pytz-2026.6.tar.gz", hash = "sha256:3b0fc2727707663d6e517936f444fd8a8b240f1fc32f4bf7ee03274245945284", size = 318520, upload-time = "2026-10-29T09:05:47.011Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b6/25/564f3fc5b70c1398d706c51f2b1470d0ea0b1b2f96fee67877b6f5bdf3b6/pytz-2026.6-py2.py3-none-any.whl", hash = "sha256:7fed3fee8fd6bd4a2b7b75a8d56021d0624127bf69bd5691f115db929ac570b3", size = 506321, upload-time = "2026-10-29T09:05:45.14Z" },
+]
+
+[[package]]
 name = "redis"
 version = "8.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1210,6 +1235,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/af/9e/418094adaee6b056ce199051b255448ed872829051e341b2294c80da0977/rpds_py-2026.9.1-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:1c2d1f6da5128eabf34e963d7163a818846075a52568250d006c4c953b40f903", size = 582764, upload-time = "2026-10-04T16:31:36.665Z" },
     { url = "https://files.pythonhosted.org/packages/3d/9b/1698ebf6b840ddfe8b472198abbed6ace35c6e398faeecd6c47dae742a4e/rpds_py-2026.9.1-cp315-cp315t-win32.whl", hash = "sha256:5c6ee90dee3e85e055ddfd502d611643d9b0fd94c818220bda84ec3dacd9b27b", size = 203795, upload-time = "2026-10-04T16:31:38.53Z" },
     { url = "https://files.pythonhosted.org/packages/8a/e2/91f70d804c61f8eac39a417e82aa1024f655ab9e8bdd7393b196242bc41b/rpds_py-2026.9.1-cp315-cp315t-win_amd64.whl", hash = "sha256:fe5ad0664ec772b02c45859041aa17655709cced7a31005817fbbbd988c25567", size = 223037, upload-time = "2026-10-04T16:31:40.468Z" },
+]
+
+[[package]]
+name = "sentinels"
+version = "1.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/9b/07195878aa25fe6ed209ec74bc55ae3e3d263b60a489c6e73fdca3c8fe05/sentinels-1.1.1.tar.gz", hash = "sha256:3c2f64f754187c19e0a1a029b148b74cf58dd12ec27b4e19c0e5d6e22b5a9a86", size = 4393, upload-time = "2025-08-12T07:57:50.26Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/49/65/dea992c6a97074f6d8ff9eab34741298cac2ce23e2b6c74fb7d08afdf85c/sentinels-1.1.1-py3-none-any.whl", hash = "sha256:835d3b28f3b47f5284afa4bf2db6e00f2dc5f80f9923d4b7e7aeeeccf6146a11", size = 3744, upload-time = "2025-08-12T07:57:48.858Z" },
 ]
 
 [[package]]

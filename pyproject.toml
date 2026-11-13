@@ -10,6 +10,7 @@ dependencies = [
     "flask-cors>=6.0.5",
     "flask-jwt-extended>=4.7.4",
     "flask-socketio>=5.7.2",
+    "mongomock>=4.3.0",
     "pydantic>=2.14.2",
     "pymongo>=4.19.0",
     "python-dotenv>=1.0.0",

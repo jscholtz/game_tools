@@ -2,11 +2,19 @@
 
 This is a disposable local proof of concept, separate from the Streamlit app.
 The static frontend runs in the browser; the Flask-SocketIO backend checks local
-credentials and broadcasts messages to authenticated users in one shared room.
-It does not use MongoDB, Redis, campaign data, or existing accounts. Chat
-messages are stored in a local JSON file; the last 20 are restored on reconnect.
+credentials and routes private messages between each player and the `dm` account.
+It uses an in-memory mongomock database, not a MongoDB server, Redis, campaign
+data, or existing campaign accounts. The last 20 messages per conversation are
+shown on reconnect. The DM sees one chat window per player account (four for
+four players); each player sees only their own conversation with the DM.
+Players also have Chat and Notes tabs. Notes are private to the authenticated
+player, loaded on login, and saved using the Save notes button. Switching tabs
+keeps unsaved edits; leaving or logging out warns about unsaved changes.
+Notes have a 100,000-character limit. Separate sessions editing the same
+account do not merge changes: the last successful save wins. An unread-chat
+indicator is not implemented yet.
 
-**Experiment only:** chat is shared with every authenticated user. Tokens are
+**Experiment only:** messages and notes are not encrypted on the server. Tokens are
 stored in browser session storage, where injected JavaScript can read them.
 There is no login rate limiting, account administration UI, or production
 server. An ngrok tunnel makes the login publicly reachable. Do not use
@@ -22,13 +30,23 @@ python3 -m venv experiments/.venv
 experiments/.venv/bin/python -m pip install -r experiments/backend/requirements.txt
 ```
 
+For an existing experiment environment, rerun the `pip install` command to
+install the experiment's current dependencies, including Pydantic.
+
 Create accounts while the backend is stopped. Pick a separate password of at
-least 12 characters for each; it is entered interactively:
+least 8 characters for each; it is entered interactively:
 
 ```bash
+experiments/.venv/bin/python experiments/backend/manage_users.py dm
 experiments/.venv/bin/python experiments/backend/manage_users.py player1
 experiments/.venv/bin/python experiments/backend/manage_users.py player2
 ```
+
+The `dm` username receives the `dm` role; other new accounts default to
+`player`. To assign a different role, use `--role dm` or `--role player`
+(the `dm` account cannot be assigned `player`). Updating an existing account
+without `--role` keeps its role. Existing hash-only accounts migrate on load:
+`dm` becomes `dm`, and all other accounts become `player`.
 
 In one terminal, start the backend:
 
@@ -48,19 +66,39 @@ its own session and restores it on refresh; a newly opened tab can inherit a
 copy of its opener's session. Tokens expire after eight hours. Log out to
 revoke the current token and disconnect its sockets. The Socket.IO client is
 loaded from a CDN, so the browser needs internet access.
+Login and session verification return the account role. The server verifies
+participants on every message and filters history and live delivery. Only the
+account named `dm` can use the DM chat; additional DM-role accounts cannot use
+private chat. Messages from the old shared chat have no recipient and are not
+displayed in private conversations.
 
-The backend creates `backend/data/` on first use. `users.json` stores salted,
-one-way scrypt password hashes, not reversible encrypted passwords.
-`jwt.key` is the signing secret, `history.json` holds chat messages, and
-`revoked.json` tracks logged-out tokens until they expire. These local files
-are git-ignored; keep them private, back them up if needed, and never put them
-in the frontend directory. Deleting the signing key invalidates all tokens;
-deleting history or revocation data loses those records. The user-management
+The backend creates `backend/data/` on first use. Accounts, chat, notes and token
+revocations live in mongomock collections. Passwords are stored as salted,
+one-way scrypt hashes, not reversible encrypted passwords. `jwt.key` remains
+the separate signing secret.
+
+Collections are saved in `mongo-snapshot.json` on startup, after each change,
+and on normal shutdown (including Ctrl+C and SIGTERM). A snapshot write must
+succeed before a message, note, logout or account update is acknowledged. When
+there is no snapshot, existing `users.json`, `history.json` and `revoked.json`
+are imported. Older snapshots without a `users` field import accounts from
+`users.json` while preserving the snapshot's messages and revocations. The
+legacy files are left untouched; after migration the snapshot takes
+precedence and legacy files no longer receive updates. Stop the backend before
+restoring or editing data or running the account-management command.
+
+These local files are git-ignored; keep them private, back them up if needed,
+and never put them in the frontend directory. Messages, notes and snapshots are not
+encrypted. Deleting the signing key invalidates all tokens; deleting the
+snapshot loses saved accounts, messages, notes and revocations, and may re-import stale legacy
+data. An abrupt termination can bypass shutdown; the most recent successful
+per-change snapshot remains available. The user-management
 command also updates passwords, but changing a password does not invalidate
 already issued tokens. Stop the backend before editing users; invalidate all
 sessions by removing the signing key while it is stopped if needed. The JSON
 storage is intended for one backend process; do not run multiple instances or
-edit its files concurrently.
+edit its files concurrently. Mongomock is a limited MongoDB simulation, not a
+production database or a complete substitute for a MongoDB server.
 
 The backend permits frontend origins `http://127.0.0.1:8000` and
 `http://localhost:8000` by default. These checks are not authentication and do

@@ -143,6 +143,20 @@ button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); co
 .board-note img { max-width: 100%; height: auto; }
 .board-note figure { margin: .75rem 0; }
 .board-note pre { overflow-x: auto; }
+.markdown-content :is(h1, h2, h3, h4, h5, h6) {
+  font-family: inherit;
+  line-height: 1.25;
+  margin: 1em 0 .4em;
+  color: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.markdown-content h1 { font-size: 1.8rem; }
+.markdown-content h2 { font-size: 1.5rem; }
+.markdown-content h3 { font-size: 1.25rem; }
+.markdown-content h4 { font-size: 1.1rem; }
+.markdown-content h5 { font-size: 1rem; }
+.markdown-content h6 { font-size: .9rem; }
 #board-existing-images img { display: block; max-width: 12rem; max-height: 12rem; }
 .note-date { color: var(--muted); font-size: .8rem; }
 .character-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .25rem .75rem; }
@@ -152,7 +166,7 @@ button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); co
 .character-hero p { margin: .2rem 0; color: var(--hero-text); }
 .character-hero img { width: 6rem; height: 6rem; object-fit: contain; border-radius: .5rem; background: var(--portrait-bg); }
 .character-section { border: 1px solid var(--border); border-radius: .6rem; padding: 1rem; min-width: 0; }
-.character-section h4 { font-size: .8rem; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.character-section > h4 { font-size: .8rem; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
 .character-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: .5rem; }
 .character-stat { background: var(--stat-bg); border-radius: .4rem; padding: .65rem; }
 .character-stat span { display: block; color: var(--muted); font-size: .76rem; }

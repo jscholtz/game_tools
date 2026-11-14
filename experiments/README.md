@@ -20,6 +20,11 @@ overrides and its panel treatment live in `frontend/theme-dark.css`. To add a
 theme, provide its token and decorative overrides, link its stylesheet, and
 add its value to both the selector and the allowlist in `frontend/theme.js`.
 
+The page markup is in `frontend/index.html`; feature scripts are in
+`frontend/js/`. They run as ordered classic scripts and share the existing
+page-level state: keep their order intact, with `app.js` last so session
+restoration starts after the feature handlers are registered.
+
 The Chat tab shows an account-wide unread count for incoming messages. It
 survives reconnects and restarts, including messages received while offline.
 Messages are marked read when Chat is selected and the browser tab is visible;

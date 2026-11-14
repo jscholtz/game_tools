@@ -35,6 +35,7 @@
     button { margin: .65rem .35rem 0 0; padding: .55rem .85rem; border: 1px solid #bca98b; border-radius: .4rem; background: #fffdf8; color: #4a2d24; font: inherit; font-size: .875rem; font-weight: 600; cursor: pointer; }
     button:hover:not(:disabled) { border-color: var(--accent); background: #f3e5d1; }
     button:disabled { opacity: .55; cursor: not-allowed; }
+    .button-icon { display: inline-block; width: 1em; height: 1em; margin-right: .4em; vertical-align: -.12em; pointer-events: none; }
     :focus-visible { outline: 3px solid #9a5c1e; outline-offset: 2px; }
     button[type="submit"] { background: var(--accent); border-color: var(--accent); color: #fff; }
     button[type="submit"]:hover:not(:disabled) { background: #5e2026; color: #fff; }
@@ -382,6 +383,62 @@
     const panes = new Map();
     const storageKey = "split-chat-session";
 
+    const iconPaths = {
+      chat: "M4 4h16v12H9l-5 4V4z",
+      notes: "M5 3h14v18H5z M8 3v18 M11 7h5 M11 11h5 M11 15h5",
+      character: "M5 3h14v18H5z M9 8a3 3 0 1 0 6 0 3 3 0 0 0-6 0 M8 18c0-2 2-3 4-3s4 1 4 3",
+      board: "M4 5h16v14H4z M8 9h8 M8 13h8 M8 17h4 M12 2v3",
+      initiative: "M6 3h12l3 9-9 9-9-9z M6 3l6 9 6-9 M3 12h18 M12 12v9",
+      login: "M13 3h7v18h-7 M4 12h12 M12 8l4 4-4 4",
+      logout: "M11 3H4v18h7 M20 12H8 M16 8l4 4-4 4",
+      send: "M3 4l18 8-18 8 3-8-3-8z M6 12h15",
+      save: "M4 3h13l3 3v15H4z M7 3v6h9V3 M7 21v-8h10v8",
+      edit: "M4 20l4-1L19 8l-3-3L5 16z M14 7l3 3",
+      cancel: "M6 6l12 12 M18 6L6 18",
+      reload: "M20 7v5h-5 M4 17v-5h5 M5 10a7 7 0 0 1 12-4l3 3 M19 14a7 7 0 0 1-12 4l-3-3",
+      add: "M12 4v16 M4 12h16",
+      remove: "M4 7h16 M9 7V4h6v3 M7 7l1 13h8l1-13 M10 10v7 M14 10v7",
+      next: "M4 5l10 7-10 7z M18 5v14",
+      sort: "M4 5h11 M4 9h8 M4 13h5 M4 17h3 M18 5v14 M15 16l3 3 3-3",
+      load: "M3 6h7l2 2h9l-2 11H3z M3 6v13",
+      overwrite: "M4 8a8 8 0 0 1 14-2l2 2 M20 4v4h-4 M20 16a8 8 0 0 1-14 2l-2-2 M4 20v-4h4",
+    };
+
+    function addButtonIcon(button, name) {
+      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("viewBox", "0 0 24 24");
+      icon.setAttribute("fill", "none");
+      icon.setAttribute("stroke", "currentColor");
+      icon.setAttribute("stroke-width", "1.8");
+      icon.setAttribute("stroke-linecap", "round");
+      icon.setAttribute("stroke-linejoin", "round");
+      icon.setAttribute("aria-hidden", "true");
+      icon.setAttribute("focusable", "false");
+      icon.classList.add("button-icon");
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", iconPaths[name]);
+      icon.append(path);
+      button.prepend(icon);
+    }
+
+    function setButtonLabel(button, label, icon) {
+      button.textContent = label;
+      addButtonIcon(button, icon);
+    }
+
+    for (const [selector, icon] of [
+      ["#login-form button[type=submit]", "login"], ["#chat-tab", "chat"], ["#notes-tab", "notes"],
+      ["#character-tab", "character"], ["#board-tab", "board"], ["#initiative-tab", "initiative"],
+      ["#logout-button", "logout"], ["#notes-save", "save"], ["#notes-cancel", "cancel"],
+      ["#notes-retry", "reload"], ["#character-edit", "edit"], ["#character-reload", "reload"],
+      ["#character-add-class", "add"], ["#character-save", "save"], ["#character-cancel", "cancel"],
+      ["#board-save", "save"], ["#board-cancel", "cancel"], ["#board-refresh", "reload"],
+      ["#initiative-refresh", "reload"], ["#initiative-add button", "add"], ["#initiative-next", "next"],
+      ["#initiative-sort", "sort"], ["#initiative-save", "save"], ["#initiative-encounter-form button", "save"],
+    ]) {
+      addButtonIcon(document.querySelector(selector), icon);
+    }
+
     function updateControls() {
       for (const pane of panes.values()) {
         const disabled = !socket || !socket.connected || pane.sending;
@@ -453,7 +510,7 @@
       playerTabs.hidden = false;
       notesTab.hidden = role !== "player";
       characterTab.hidden = role !== "player" && !(role === "dm" && username === "dm");
-      characterTab.textContent = role === "dm" ? "Characters" : "Character";
+      setButtonLabel(characterTab, role === "dm" ? "Characters" : "Character", "character");
       characterEditButton.hidden = role !== "player";
       characterDisplay.hidden = role !== "player";
       dmCharacterList.hidden = role !== "dm";
@@ -659,10 +716,10 @@
       return saved;
     }
 
-    function initiativeButton(label, action) {
+    function initiativeButton(label, action, icon) {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = label;
+      setButtonLabel(button, label, icon);
       button.dataset.initiativeAction = "";
       button.addEventListener("click", action);
       return button;
@@ -727,7 +784,7 @@
             next.tracker.combatants.splice(index, 1);
             if (next.tracker.current_turn_id === actor.id) next.tracker.current_turn_id = null;
             saveInitiative(next);
-          }));
+          }, "remove"));
           initiativeEditList.append(group);
         }
         for (const encounter of initiativeData.encounters) {
@@ -741,19 +798,19 @@
             const next = structuredClone(initiativeData);
             next.tracker = structuredClone(encounter.tracker);
             saveInitiative(next);
-          }));
+          }, "load"));
           item.append(initiativeButton("Overwrite", () => {
             if (!confirm(`Overwrite ${encounter.name} with the live tracker?`)) return;
             const next = structuredClone(initiativeData);
             next.encounters.find((entry) => entry.id === encounter.id).tracker = structuredClone(next.tracker);
             saveInitiative(next);
-          }));
+          }, "overwrite"));
           item.append(initiativeButton("Delete", () => {
             if (!confirm(`Delete saved encounter ${encounter.name}?`)) return;
             const next = structuredClone(initiativeData);
             next.encounters = next.encounters.filter((entry) => entry.id !== encounter.id);
             saveInitiative(next);
-          }));
+          }, "remove"));
           initiativeEncounters.append(item);
         }
         if (!initiativeData.encounters.length) initiativeEncounters.textContent = "No saved encounters.";
@@ -874,7 +931,7 @@
       boardVisible.disabled = false;
       boardSave.disabled = false;
       boardCancel.disabled = false;
-      boardCancel.textContent = note ? "Cancel editing" : "Clear editor";
+      setButtonLabel(boardCancel, note ? "Cancel editing" : "Clear editor", "cancel");
     }
 
     async function loadBoard() {
@@ -923,6 +980,7 @@
             const edit = document.createElement("button");
             edit.type = "button";
             edit.textContent = "Edit";
+            addButtonIcon(edit, "edit");
             edit.addEventListener("click", () => {
               if (boardSaving) return;
               if (boardDirty() && !confirm("Discard unsaved board edits?")) return;
@@ -1085,7 +1143,7 @@
       notesBaseline = { header: note ? note.header : "", content: note ? note.content : "" };
       notesHeader.value = notesBaseline.header;
       notesInput.value = notesBaseline.content;
-      notesCancel.textContent = note ? "Cancel editing" : "Clear editor";
+      setButtonLabel(notesCancel, note ? "Cancel editing" : "Clear editor", "cancel");
     }
 
     const characterTextSpecs = [
@@ -1177,6 +1235,7 @@
       const remove = document.createElement("button");
       remove.type = "button";
       remove.textContent = "Remove class";
+      addButtonIcon(remove, "remove");
       remove.addEventListener("click", () => group.remove());
       group.append(remove);
       characterClasses.append(group);
@@ -1484,6 +1543,7 @@
           const edit = document.createElement("button");
           edit.type = "button";
           edit.textContent = "Edit";
+          addButtonIcon(edit, "edit");
           edit.addEventListener("click", () => {
             if (notesSaving) return;
             if (notesDirty() && !confirm("Discard unsaved personal note edits?")) return;
@@ -1764,6 +1824,7 @@
       const button = document.createElement("button");
       button.type = "submit";
       button.textContent = "Send";
+      addButtonIcon(button, "send");
       form.append(label, button);
       section.append(heading, box, form);
       conversations.append(section);

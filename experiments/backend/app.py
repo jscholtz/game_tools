@@ -29,7 +29,7 @@ from werkzeug.security import check_password_hash
 
 from models import (
     MAX_IMAGE_BYTES, MAX_NOTE_LENGTH, MIN_PASSWORD_LENGTH, BoardImage, BoardNote, BoardNoteRequest, BoardNoteUpdate,
-    CharacterData, InitiativeState, LoginRequest, MessageRequest, NoteRequest, NoteUpdate, PrivateMessage,
+    CharacterData, ChatReadRequest, InitiativeState, LoginRequest, MessageRequest, NoteRequest, NoteUpdate, PrivateMessage,
     Snapshot, SocketAuth,
 )
 
@@ -124,6 +124,8 @@ def load_database():
     for username, character in snapshot.characters.items():
         database.characters.insert_one({"_id": username, **character.model_dump()})
     database.initiative.insert_one({"_id": "state", **snapshot.initiative.model_dump()})
+    for username, cursor in snapshot.chat_read.items():
+        database.chat_read.insert_one({"_id": username, "cursor": cursor})
     save_database()
 
 
@@ -143,9 +145,10 @@ def save_database():
         for entry in database.characters.find()
     }
     initiative = database.initiative.find_one({"_id": "state"}, {"_id": 0}) or InitiativeState().model_dump()
+    chat_read = {entry["_id"]: entry["cursor"] for entry in database.chat_read.find()}
     snapshot = Snapshot.model_validate(
         {"history": messages, "revoked": revocations, "users": users(), "notes": notes,
-         "board": board, "characters": characters, "initiative": initiative}
+         "board": board, "characters": characters, "initiative": initiative, "chat_read": chat_read}
     )
     write_json(SNAPSHOT_FILE, snapshot.model_dump())
 
@@ -160,17 +163,41 @@ def chat_data(username):
         players = sorted(user["_id"] for user in database.users.find({"role": "player"}))
     else:
         players = [username]
+    marker = database.chat_read.find_one({"_id": username})
+    cursor = marker["cursor"] if marker else -1
     conversations = {}
     for player in players:
         query = {"$or": [
             {"message.sender": player, "message.recipient": "dm"},
             {"message.sender": "dm", "message.recipient": player},
         ]}
+        recent = list(database.messages.find(query).sort("_id", -1).limit(20))
+        unread = database.messages.find({
+            "$and": [query, {"_id": {"$gt": cursor}, "message.recipient": username}]
+        })
+        entries = {item["_id"]: item for item in recent}
+        entries.update({item["_id"]: item for item in unread})
         conversations[player] = [
-            item["message"]
-            for item in reversed(list(database.messages.find(query).sort("_id", -1).limit(20)))
+            {"id": item["_id"], **item["message"]}
+            for item in sorted(entries.values(), key=lambda item: item["_id"])
         ]
     return conversations
+
+
+def unread_count(username):
+    marker = database.chat_read.find_one({"_id": username})
+    return database.messages.count_documents({
+        "_id": {"$gt": marker["cursor"] if marker else -1},
+        "message.recipient": username,
+    })
+
+
+def notify_unread(username):
+    count = unread_count(username)
+    for sid, connection in connections.items():
+        if (connection["user"] == username and connection["exp"] > time.time()
+                and not is_revoked(connection["jti"]) and user_exists(username)):
+            socketio.emit("chat_unread", {"count": count}, to=sid)
 
 
 def is_revoked(jti):
@@ -560,6 +587,38 @@ def get_history():
         except ValueError as error:
             return {"status": "error", "message": str(error)}
         emit("chat_history", conversations, to=request.sid)
+        emit("chat_unread", {"count": unread_count(identity["user"])}, to=request.sid)
+    return {"status": "success"}
+
+
+@socketio.on("mark_chat_read")
+def mark_chat_read(data):
+    try:
+        incoming = ChatReadRequest.model_validate(data)
+    except ValidationError:
+        return {"status": "error", "message": "Invalid chat read position."}
+    with state_lock:
+        identity = connections.get(request.sid)
+        if (not identity or identity["exp"] <= time.time()
+                or is_revoked(identity["jti"]) or not user_exists(identity["user"])):
+            return {"status": "error", "message": "Session expired. Log in again."}
+        username = identity["user"]
+        if database.messages.find_one({"_id": incoming.message_id, "message.recipient": username}) is None:
+            return {"status": "error", "message": "Message not found."}
+        existing = database.chat_read.find_one({"_id": username})
+        if existing is None or incoming.message_id > existing["cursor"]:
+            database.chat_read.replace_one(
+                {"_id": username}, {"_id": username, "cursor": incoming.message_id}, upsert=True
+            )
+            try:
+                save_database()
+            except (OSError, ValueError, TypeError):
+                if existing is None:
+                    database.chat_read.delete_one({"_id": username})
+                else:
+                    database.chat_read.replace_one({"_id": username}, existing)
+                raise
+        notify_unread(username)
     return {"status": "success"}
 
 
@@ -611,7 +670,8 @@ def handle_message(data):
             if (recipient["exp"] > time.time() and not is_revoked(recipient["jti"])
                     and recipient["user"] in (message["sender"], message["recipient"])
                     and user_exists(recipient["user"])):
-                emit("receive_message", message, to=sid)
+                emit("receive_message", {"id": message_id, **message}, to=sid)
+        notify_unread(target)
     return {"status": "success"}
 
 

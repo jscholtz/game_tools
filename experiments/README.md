@@ -4,12 +4,20 @@ This is a disposable local proof of concept, separate from the Streamlit app.
 The static frontend runs in the browser; the Flask-SocketIO backend checks local
 credentials and routes private messages between each player and the `dm` account.
 It uses an in-memory mongomock database, not a MongoDB server, Redis, campaign
-data, or existing campaign accounts. The last 20 messages per conversation are
-shown on reconnect. The DM sees one chat window per player account (four for
+data, or existing campaign accounts. The last 20 messages per conversation and
+any older unread incoming messages are shown on reconnect. The DM sees one chat window per player account (four for
 four players); each player sees only their own conversation with the DM.
 Players also have Chat and Notes tabs. Players can create and edit multiple
 private Markdown notes. Switching tabs keeps unsaved edits; leaving or logging
-out warns about unsaved changes. An unread-chat indicator is not implemented yet.
+out warns about unsaved changes.
+The left navigation uses up and down arrow keys to switch tabs.
+
+The Chat tab shows an account-wide unread count for incoming messages. It
+survives reconnects and restarts, including messages received while offline.
+Messages are marked read when Chat is selected and the browser tab is visible;
+opening Chat in any session clears the count for that account in all sessions.
+Existing messages are treated as read when upgrading. Back up the snapshot first: older versions of
+the experiment cannot read the new read-position field.
 
 Players also have a Character tab. Each player can view and edit their own
 character name, race, gender, portrait, classes and subclass links, passive
@@ -21,6 +29,8 @@ experiment's snapshot, not the Streamlit database; it is not automatically
 imported. The `dm` account can view every player's full saved sheet, including
 description, background and story, in its read-only Characters tab. Players
 without a saved character are listed too; use Reload character to refresh.
+The sheet groups identity, combat, abilities, senses, movement and narrative
+details; the editor uses the same stat groupings.
 Other players cannot access these sheets. Concurrent edits are rejected; copy the draft,
 cancel and reload before applying it again.
 
@@ -34,6 +44,7 @@ current turn when that combatant is visible. The server never sends hit points,
 hidden combatants or saved encounters to players.
 
 The DM can save named encounter snapshots and load, overwrite or delete them.
+These controls are under the expandable **Saved encounters** section.
 Snapshots include the order, turn, visibility and hit points; subsequent live
 changes do not alter a saved encounter until overwritten. Connected clients
 refresh after changes; use Reload initiative after a disconnect or failed

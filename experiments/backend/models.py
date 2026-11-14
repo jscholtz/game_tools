@@ -36,6 +36,12 @@ class MessageRequest(BaseModel):
         return value.strip() if isinstance(value, str) else value
 
 
+class ChatReadRequest(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    message_id: int = Field(ge=0)
+
+
 class NoteRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True)
 
@@ -246,6 +252,25 @@ class Snapshot(BaseModel):
     board: dict[str, BoardNote] = Field(default_factory=dict, repr=False)
     characters: dict[str, CharacterData] = Field(default_factory=dict, repr=False)
     initiative: InitiativeState = Field(default_factory=InitiativeState, repr=False)
+    chat_read: dict[str, int] = Field(default_factory=dict, repr=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_chat_read(cls, value):
+        if isinstance(value, dict) and "chat_read" not in value:
+            value = dict(value)
+            history = value.get("history")
+            users = value.get("users")
+            if isinstance(history, list) and isinstance(users, dict):
+                value["chat_read"] = {username: len(history) - 1 for username in users}
+        return value
+
+    @field_validator("chat_read")
+    @classmethod
+    def valid_chat_read(cls, value):
+        if any(cursor < -1 for cursor in value.values()):
+            raise ValueError("Invalid chat read position.")
+        return value
 
     @field_validator("notes", mode="before")
     @classmethod

@@ -8,26 +8,150 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js" defer></script>
   <style>
-    body { font-family: sans-serif; max-width: 70rem; margin: 2rem auto; padding: 0 1rem; }
-    label { display: block; margin-top: 1rem; }
-    input, textarea { box-sizing: border-box; padding: .5rem; width: 100%; }
-    input[type="checkbox"] { width: auto; }
-    button { margin-top: 1rem; padding: .5rem 1rem; }
-    [role="tab"][aria-selected="true"] { font-weight: bold; border-bottom: 3px solid currentColor; }
-    #conversations { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; }
-    .chat-box { border: 1px solid #aaa; height: 15rem; overflow-y: auto; padding: .5rem; }
-    .chat-box div { overflow-wrap: anywhere; white-space: pre-wrap; }
-    .warning { background: #fff3cd; color: #332701; padding: .75rem; }
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #39291f;
+      background: #eee2cb;
+      --accent: #792f34;
+      --border: #d7c6a9;
+      --muted: #665443;
+      --surface: #fffaf0;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { max-width: 100rem; margin: 0 auto; padding: 1.25rem clamp(1rem, 3vw, 2.5rem); }
+    h1 { font-family: Georgia, serif; font-size: 1.55rem; margin: 0 0 .65rem; }
+    h2, h3, h4 { line-height: 1.25; }
+    h3 { font-family: Georgia, serif; font-size: 1.4rem; margin: 0 0 .4rem; }
+    h4 { margin: 0 0 .65rem; }
+    p { line-height: 1.5; }
+    a { color: #752f34; }
+    a:visited { color: #62312e; }
+    label { display: block; margin-top: .75rem; color: #503c2f; font-size: .88rem; font-weight: 600; }
+    input, textarea { display: block; width: 100%; margin-top: .3rem; padding: .6rem .7rem; border: 1px solid #bca98b; border-radius: .4rem; background: #fffdf8; color: inherit; font: inherit; }
+    textarea { resize: vertical; }
+    input[type="checkbox"] { display: inline-block; width: auto; margin: 0 .25rem 0 0; accent-color: var(--accent); }
+    button { margin: .65rem .35rem 0 0; padding: .55rem .85rem; border: 1px solid #bca98b; border-radius: .4rem; background: #fffdf8; color: #4a2d24; font: inherit; font-size: .875rem; font-weight: 600; cursor: pointer; }
+    button:hover:not(:disabled) { border-color: var(--accent); background: #f3e5d1; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    :focus-visible { outline: 3px solid #9a5c1e; outline-offset: 2px; }
+    button[type="submit"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button[type="submit"]:hover:not(:disabled) { background: #5e2026; color: #fff; }
+    .warning { margin: 0 0 1rem; background: #fff5da; color: #61480d; border: 1px solid #eedcaa; border-radius: .45rem; padding: .6rem .8rem; font-size: .83rem; }
     .error { color: #a00000; }
-    .board-note { border: 1px solid #aaa; padding: 1rem; margin-top: 1rem; overflow-wrap: anywhere; }
-    .board-note img { max-width: 100%; }
+    #login-view { max-width: 28rem; padding: 1.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; }
+    #login-view h2 { margin-top: 0; }
+    #chat-view { display: grid; grid-template-columns: 12.5rem minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    .sidebar { position: sticky; top: 1rem; padding: 1rem; background: #3e291f; color: #fff; border-radius: .75rem; }
+    .sidebar h2 { margin: 0; font-size: .8rem; font-weight: 500; color: #e4d1ac; overflow-wrap: anywhere; }
+    .sidebar h2 span { display: block; margin-top: .2rem; color: #fff; font-size: 1rem; font-weight: 700; }
+    #logout-button { margin: .75rem 0 0; background: transparent; color: #f7ebd8; border-color: #b49b77; }
+    #logout-button:hover:not(:disabled) { background: #5a3929; color: #fff; }
+    #player-tabs { display: flex; flex-direction: column; gap: .25rem; margin-top: 1.1rem; }
+    #player-tabs button { width: 100%; margin: 0; padding: .7rem .75rem; text-align: left; background: transparent; border-color: transparent; color: #f7ebd8; }
+    #player-tabs button:hover:not(:disabled) { background: #5a3929; }
+    #player-tabs button[aria-selected="true"] { background: #f4e3bf; color: #43291f; border-color: #d0ad6c; }
+    .unread-badge { float: right; min-width: 1.4rem; padding: .1rem .35rem; border-radius: 1rem; background: #792f34; color: #fff; text-align: center; font-size: .75rem; line-height: 1.2; pointer-events: none; }
+    .main-content { min-width: 0; padding: clamp(1rem, 2vw, 1.5rem); background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; min-height: 28rem; }
+    [role="status"]:empty, [role="alert"]:empty { display: none; }
+    [role="status"] { color: var(--muted); font-size: .875rem; }
+    #chat-panel { container-type: inline-size; }
+    #conversations { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    #conversations.dm-conversations { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #conversations section { min-width: 0; }
+    #conversations h3 { font-family: inherit; font-size: 1rem; }
+    .chat-box { border: 1px solid var(--border); border-radius: .5rem; background: #f9f1e2; height: clamp(15rem, 45vh, 30rem); overflow-y: auto; padding: .75rem; }
+    .chat-box div { overflow-wrap: anywhere; white-space: pre-wrap; padding: .3rem 0; }
+    .dm-conversations .chat-box { height: clamp(8rem, 20vh, 13rem); }
+    .dm-conversations form { display: flex; align-items: end; gap: .45rem; }
+    .dm-conversations form label { flex: 1; min-width: 0; margin-top: .4rem; }
+    .dm-conversations form button { flex: none; margin: 0; }
+    .notes-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 1.5rem; align-items: start; }
+    .notes-layout h4 { margin: 0; }
+    .board-note { border: 1px solid var(--border); border-radius: .5rem; padding: .8rem 1rem; margin-top: .65rem; overflow-wrap: anywhere; }
+    .board-note summary { cursor: pointer; font-weight: 650; }
+    .board-note img { max-width: 100%; height: auto; }
+    .board-note figure { margin: .75rem 0; }
     .board-note pre { overflow-x: auto; }
     #board-existing-images img { display: block; max-width: 12rem; max-height: 12rem; }
-    .note-date { color: #777; font-size: .8rem; }
-    .character-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .5rem 1rem; }
-    .character-display img { max-width: min(100%, 24rem); }
-    .character-display p { white-space: pre-wrap; overflow-wrap: anywhere; }
-    .initiative-current { border: 2px solid currentColor; padding: .5rem; }
+    .note-date { color: var(--muted); font-size: .8rem; }
+    .character-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .25rem .75rem; }
+    .character-sheet { display: grid; gap: 1rem; }
+    .character-hero { display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: .6rem; background: #f4e7d0; }
+    .character-hero h4 { font-family: Georgia, serif; font-size: 1.4rem; margin: 0 0 .3rem; }
+    .character-hero p { margin: .2rem 0; color: #5b4332; }
+    .character-hero img { width: 6rem; height: 6rem; object-fit: contain; border-radius: .5rem; background: #e5d1ad; }
+    .character-section { border: 1px solid var(--border); border-radius: .6rem; padding: 1rem; min-width: 0; }
+    .character-section h4 { font-size: .8rem; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+    .character-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: .5rem; }
+    .character-stat { background: #f8f0e2; border-radius: .4rem; padding: .65rem; }
+    .character-stat span { display: block; color: var(--muted); font-size: .76rem; }
+    .character-stat strong { display: block; margin-top: .2rem; font-size: 1.1rem; overflow-wrap: anywhere; }
+    .character-prose p { margin: .4rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .character-prose img { max-width: 100%; height: auto; }
+    .character-prose pre { overflow-x: auto; }
+    #dm-character-list .character-display { margin-top: .75rem; }
+    .character-editor-section { margin: 1rem 0; }
+    .character-editor-section h4 { margin-bottom: .15rem; }
+    #character-classes fieldset { border: 1px solid var(--border); border-radius: .5rem; margin: .75rem 0; }
+    #initiative-dm { margin-top: .75rem; container-type: inline-size; }
+    .initiative-toolbar { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; }
+    .initiative-toolbar button { margin: 0; }
+    #initiative-add { display: grid; grid-template-columns: minmax(10rem, 2fr) minmax(5rem, .65fr) minmax(6rem, .8fr) auto; gap: .5rem; align-items: end; margin: .9rem 0; }
+    #initiative-add label, .initiative-combatant label, #initiative-encounter-form label { margin: 0; font-size: .75rem; }
+    #initiative-add input, .initiative-combatant input:not([type="checkbox"]), #initiative-encounter-form input { margin-top: .2rem; padding: .45rem .5rem; }
+    #initiative-add button { margin: 0; }
+    #initiative-fields { margin: .85rem 0 0; padding: 0; border: 0; min-width: 0; }
+    #initiative-fields > legend { padding: 0; margin-bottom: .4rem; font-weight: 700; }
+    #initiative-edit-list { display: grid; gap: .4rem; }
+    .initiative-combatant { margin: 0; padding: .55rem .65rem; border: 1px solid var(--border); border-radius: .5rem; min-width: 0; }
+    .initiative-combatant-fields { display: grid; grid-template-columns: minmax(8rem, 2fr) repeat(3, minmax(4.5rem, .7fr)) auto auto auto; gap: .5rem; align-items: end; }
+    .initiative-combatant legend { padding: 0 .2rem; color: var(--muted); font-size: .75rem; font-weight: 600; }
+    .initiative-combatant label { min-width: 0; }
+    .initiative-combatant .initiative-toggle { align-self: center; white-space: nowrap; padding-top: 1rem; }
+    .initiative-combatant button { margin: 0; padding: .45rem .6rem; }
+    .initiative-combatant.initiative-current { border: 2px solid #9a6a2b; background: #f8ecd5; }
+    #initiative-save { margin: .6rem 0 0; }
+    .initiative-encounter-section { margin-top: 1.1rem; border: 1px solid var(--border); border-radius: .5rem; padding: .75rem; }
+    .initiative-encounter-section summary { cursor: pointer; font-weight: 700; }
+    .initiative-encounter-section p { color: var(--muted); font-size: .85rem; margin: .55rem 0; }
+    #initiative-encounter-form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; }
+    #initiative-encounter-form label { flex: 1 1 12rem; }
+    #initiative-encounter-form button { margin: 0; }
+    .initiative-encounter { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; padding-top: .6rem; }
+    .initiative-encounter strong { flex: 1 1 10rem; overflow-wrap: anywhere; }
+    .initiative-encounter button { margin: 0; padding: .4rem .6rem; }
+    #initiative-player-list { max-width: 40rem; margin-top: .75rem; }
+    #initiative-player-list p { margin: .4rem 0; padding: .7rem .85rem; border: 1px solid var(--border); border-radius: .45rem; }
+    #initiative-player-list .initiative-current { border-color: #9a6a2b; background: #f8ecd5; font-weight: 700; }
+    .initiative-current { border: 2px solid #9a6a2b; padding: .5rem; }
+    @container (max-width: 38rem) {
+      #conversations.dm-conversations { grid-template-columns: 1fr; }
+    }
+    @container (max-width: 48rem) {
+      #initiative-add { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .initiative-combatant-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .initiative-combatant .initiative-name { grid-column: span 3; }
+      .initiative-combatant .initiative-toggle { padding-top: 0; }
+    }
+    @media (max-width: 760px) {
+      #chat-view { grid-template-columns: 8rem minmax(0, 1fr); gap: .65rem; }
+      .sidebar { padding: .75rem; }
+      .main-content { padding: 1rem; }
+      .notes-layout { grid-template-columns: 1fr; }
+      #initiative-add { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .initiative-combatant-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .initiative-combatant .initiative-name { grid-column: span 3; }
+      .initiative-combatant .initiative-toggle { padding-top: 0; }
+    }
+    @media (max-width: 420px) {
+      body { padding: .75rem; }
+      #chat-view { grid-template-columns: 6.5rem minmax(0, 1fr); }
+      #player-tabs button { padding: .65rem .4rem; font-size: .8rem; overflow-wrap: anywhere; }
+      .sidebar { padding: .6rem; }
+      .character-hero { flex-wrap: wrap; }
+    }
   </style>
 </head>
 <body>
@@ -50,21 +174,28 @@
   </section>
 
   <section id="chat-view" hidden>
+    <aside class="sidebar">
     <h2>Signed in: <span id="current-user"></span></h2>
-    <button id="logout-button" type="button">Log out</button>
-    <div id="player-tabs" role="tablist" aria-label="Sections" hidden>
-      <button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel">Chat</button>
+    <div id="player-tabs" role="tablist" aria-label="Sections" aria-orientation="vertical" hidden>
+      <button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel">Chat <span id="chat-unread" class="unread-badge" aria-hidden="true" hidden></span></button>
       <button id="notes-tab" type="button" role="tab" aria-selected="false" aria-controls="notes-panel" tabindex="-1">Notes</button>
       <button id="character-tab" type="button" role="tab" aria-selected="false" aria-controls="character-panel" tabindex="-1">Character</button>
       <button id="board-tab" type="button" role="tab" aria-selected="false" aria-controls="board-panel" tabindex="-1">Board</button>
       <button id="initiative-tab" type="button" role="tab" aria-selected="false" aria-controls="initiative-panel" tabindex="-1">Initiative</button>
     </div>
+    <button id="logout-button" type="button">Log out</button>
+    </aside>
+    <main class="main-content">
     <div id="chat-panel" role="region" aria-label="Chat">
       <p id="connection-status" role="status">Connecting...</p>
       <div id="conversations"></div>
       <p id="message-error" class="error" role="alert"></p>
     </div>
     <div id="notes-panel" role="tabpanel" aria-labelledby="notes-tab" hidden>
+      <h3>Personal notes</h3>
+      <div class="notes-layout">
+      <div>
+      <h4>Note editor</h4>
       <form id="notes-form">
         <label for="notes-header">Header</label>
         <input id="notes-header" maxlength="200" required disabled>
@@ -73,9 +204,14 @@
         <button id="notes-save" type="submit" disabled>Save note</button>
         <button id="notes-cancel" type="button" disabled>Clear editor</button>
       </form>
+      </div>
+      <div>
+      <h4>Saved notes</h4>
       <button id="notes-retry" type="button">Refresh notes</button>
       <p id="notes-status" role="status"></p>
       <div id="notes-list"></div>
+      </div>
+      </div>
     </div>
     <div id="character-panel" role="tabpanel" aria-labelledby="character-tab" hidden>
       <h3>Character</h3>
@@ -85,7 +221,7 @@
       <button id="character-edit" type="button" disabled>Edit character</button>
       <button id="character-reload" type="button">Reload character</button>
       <form id="character-form" hidden>
-        <div id="character-fields" class="character-grid"></div>
+        <div id="character-fields"></div>
         <h4>Classes</h4>
         <div id="character-classes"></div>
         <button id="character-add-class" type="button">Add class</button>
@@ -124,31 +260,36 @@
       <button id="initiative-refresh" type="button">Reload initiative</button>
       <div id="initiative-dm" hidden>
         <form id="initiative-add">
-          <label for="initiative-name">Character or monster</label>
-          <input id="initiative-name" maxlength="200" required>
-          <label for="initiative-value">Initiative</label>
-          <input id="initiative-value" type="number" min="-10000" max="10000" step="1" value="0" required>
-          <label for="initiative-hp">Maximum hit points</label>
-          <input id="initiative-hp" type="number" min="1" max="1000000" step="1" value="10" required>
+          <label for="initiative-name">Character or monster
+            <input id="initiative-name" maxlength="200" required></label>
+          <label for="initiative-value">Initiative
+            <input id="initiative-value" type="number" min="-10000" max="10000" step="1" value="0" required></label>
+          <label for="initiative-hp">Maximum HP
+            <input id="initiative-hp" type="number" min="1" max="1000000" step="1" value="10" required></label>
           <button type="submit" data-initiative-action>Add combatant</button>
         </form>
-        <button id="initiative-next" type="button" data-initiative-action>Next turn</button>
-        <button id="initiative-sort" type="button" data-initiative-action>Reorder by initiative</button>
+        <div class="initiative-toolbar">
+          <button id="initiative-next" type="button" data-initiative-action>Next turn</button>
+          <button id="initiative-sort" type="button" data-initiative-action>Reorder by initiative</button>
+        </div>
         <form id="initiative-edit">
           <fieldset id="initiative-fields"><legend>Combatants</legend><div id="initiative-edit-list"></div></fieldset>
           <button id="initiative-save" type="submit">Save combatant changes</button>
         </form>
-        <h4>Saved encounters</h4>
-        <p>Saved encounters are snapshots; later tracker changes do not update them.</p>
-        <form id="initiative-encounter-form">
-          <label for="initiative-encounter-name">Encounter name</label>
-          <input id="initiative-encounter-name" maxlength="200" required>
-          <button type="submit" data-initiative-action>Save new encounter</button>
-        </form>
-        <div id="initiative-encounters"></div>
+        <details class="initiative-encounter-section">
+          <summary>Saved encounters</summary>
+          <p>Snapshots do not change until overwritten.</p>
+          <form id="initiative-encounter-form">
+            <label for="initiative-encounter-name">Encounter name
+              <input id="initiative-encounter-name" maxlength="200" required></label>
+            <button type="submit" data-initiative-action>Save new encounter</button>
+          </form>
+          <div id="initiative-encounters"></div>
+        </details>
       </div>
       <div id="initiative-player-list"></div>
     </div>
+    </main>
   </section>
 
   <script>
@@ -158,6 +299,7 @@
     const messageError = document.getElementById("message-error");
     const playerTabs = document.getElementById("player-tabs");
     const chatTab = document.getElementById("chat-tab");
+    const chatUnread = document.getElementById("chat-unread");
     const notesTab = document.getElementById("notes-tab");
     const chatPanel = document.getElementById("chat-panel");
     const notesPanel = document.getElementById("notes-panel");
@@ -212,6 +354,10 @@
     let backendOrigin;
     let currentUser;
     let currentRole;
+    let chatHistoryReady = false;
+    let latestChatReceived = -1;
+    let chatReadAck = -1;
+    let chatReadInFlight = false;
     let sessionVersion = 0;
     let notesEdit = null;
     let notesBaseline = { header: "", content: "" };
@@ -303,6 +449,7 @@
       sessionVersion++;
       currentUser = username;
       currentRole = role;
+      conversations.classList.toggle("dm-conversations", role === "dm" && username === "dm");
       playerTabs.hidden = false;
       notesTab.hidden = role !== "player";
       characterTab.hidden = role !== "player" && !(role === "dm" && username === "dm");
@@ -343,7 +490,13 @@
       token = null;
       sessionStorage.removeItem(storageKey);
       conversations.replaceChildren();
+      conversations.classList.remove("dm-conversations");
       panes.clear();
+      chatHistoryReady = false;
+      latestChatReceived = -1;
+      chatReadAck = -1;
+      chatReadInFlight = false;
+      updateUnreadCount(0);
       notesInput.value = "";
       notesHeader.value = "";
       notesEdit = null;
@@ -405,18 +558,20 @@
       initiativePanel.hidden = selected !== initiativeTab;
       if (selected === characterTab && currentRole === "dm" && currentUser === "dm") loadCharacters();
       if (selected === initiativeTab && !initiativeDirty) loadInitiative();
+      if (selected === chatTab) markVisibleChatRead();
     }
 
     playerTabs.addEventListener("click", (event) => {
-      if ([chatTab, notesTab, characterTab, boardTab, initiativeTab].includes(event.target)) selectTab(event.target);
+      const tab = event.target.closest('[role="tab"]');
+      if ([chatTab, notesTab, characterTab, boardTab, initiativeTab].includes(tab)) selectTab(tab);
     });
     playerTabs.addEventListener("keydown", (event) => {
-      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
       const tabs = [chatTab, notesTab, characterTab, boardTab, initiativeTab].filter((tab) => !tab.hidden);
       const index = tabs.indexOf(document.activeElement);
       const selected = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs[tabs.length - 1] :
-        tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+        tabs[(index + (event.key === "ArrowDown" ? 1 : -1) + tabs.length) % tabs.length];
       selectTab(selected);
       selected.focus();
     });
@@ -531,19 +686,25 @@
         if (!tracker.combatants.length) initiativeEditList.textContent = "No combatants yet.";
         for (const [index, actor] of tracker.combatants.entries()) {
           const group = document.createElement("fieldset");
+          group.className = "initiative-combatant";
           const legend = document.createElement("legend");
           legend.textContent = `${actor.name}${actor.id === tracker.current_turn_id ? " — current turn" : ""}`;
           group.append(legend);
-          if (actor.id === tracker.current_turn_id) group.className = "initiative-current";
+          const fields = document.createElement("div");
+          fields.className = "initiative-combatant-fields";
+          group.append(fields);
+          if (actor.id === tracker.current_turn_id) group.classList.add("initiative-current");
           for (const [key, title, type, min, max] of [
             ["name", "Name", "text", null, 200],
             ["initiative", "Initiative", "number", -10000, 10000],
-            ["current_hp", "Current hit points", "number", 0, 1000000],
-            ["max_hp", "Maximum hit points", "number", 1, 1000000],
-            ["visible", "Visible to players", "checkbox", null, null],
+            ["current_hp", "Current HP", "number", 0, 1000000],
+            ["max_hp", "Max HP", "number", 1, 1000000],
+            ["visible", "Visible", "checkbox", null, null],
             ["dead", "Defeated", "checkbox", null, null],
           ]) {
             const label = document.createElement("label");
+            if (key === "name") label.className = "initiative-name";
+            if (type === "checkbox") label.className = "initiative-toggle";
             const input = document.createElement("input");
             input.type = type;
             input.dataset.index = String(index);
@@ -558,9 +719,9 @@
               else { input.min = String(min); input.max = String(max); input.step = "1"; }
               label.append(document.createTextNode(title), input);
             }
-            group.append(label);
+            fields.append(label);
           }
-          group.append(initiativeButton("Remove combatant", () => {
+          fields.append(initiativeButton("Remove combatant", () => {
             if (!confirm(`Remove ${actor.name} from the live tracker?`)) return;
             const next = structuredClone(initiativeData);
             next.tracker.combatants.splice(index, 1);
@@ -571,6 +732,7 @@
         }
         for (const encounter of initiativeData.encounters) {
           const item = document.createElement("div");
+          item.className = "initiative-encounter";
           const label = document.createElement("strong");
           label.textContent = encounter.name;
           item.append(label);
@@ -947,6 +1109,12 @@
       ["class_name", "Class name"], ["class_url", "Class URL"], ["subclass_name", "Subclass"],
       ["subclass_url", "Subclass URL"], ["levels", "Levels"],
     ];
+    const characterStatGroups = [
+      ["Combat", ["armor_class", "max_hp", "initiative_bonus"]],
+      ["Abilities", ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]],
+      ["Senses", ["passive_perception", "passive_insight"]],
+      ["Movement", ["speed_walk", "speed_fly", "speed_swim", "speed_climb", "speed_burrow"]],
+    ];
 
     function characterInput(name, label, options = {}) {
       const wrapper = document.createElement("label");
@@ -969,14 +1137,30 @@
       return wrapper;
     }
 
-    for (const [name, label] of characterTextSpecs) {
-      const multiline = ["character_description", "background", "story"].includes(name);
-      (multiline ? characterTextFields : characterFields).append(
-        characterInput(name, label, { multiline, required: name === "name" })
-      );
+    function characterEditorGroup(title) {
+      const section = document.createElement("section");
+      section.className = "character-editor-section";
+      const heading = document.createElement("h4");
+      heading.textContent = title;
+      const fields = document.createElement("div");
+      fields.className = "character-grid";
+      section.append(heading, fields);
+      characterFields.append(section);
+      return fields;
     }
-    for (const [name, label, min, max] of characterNumberSpecs) {
-      characterFields.append(characterInput(name, label, { numeric: true, min, max }));
+
+    const identityFields = characterEditorGroup("Identity");
+    for (const [name, label] of characterTextSpecs.slice(0, 3)) {
+      identityFields.append(characterInput(name, label, { required: name === "name" }));
+    }
+    for (const [title, names] of characterStatGroups) {
+      const fields = characterEditorGroup(title);
+      for (const [name, label, min, max] of characterNumberSpecs.filter(([key]) => names.includes(key))) {
+        fields.append(characterInput(name, label, { numeric: true, min, max }));
+      }
+    }
+    for (const [name, label] of characterTextSpecs.slice(3)) {
+      characterTextFields.append(characterInput(name, label, { multiline: true }));
     }
 
     function addCharacterClass(entry = {}) {
@@ -1027,22 +1211,28 @@
         characterDisplay.textContent = "No character saved yet.";
         return;
       }
-      const heading = document.createElement("h4");
-      heading.textContent = characterData.name;
-      characterDisplay.append(heading);
+      const sheet = document.createElement("div");
+      sheet.className = "character-sheet";
+      const hero = document.createElement("div");
+      hero.className = "character-hero";
       if (characterData.portrait) {
         const image = document.createElement("img");
         image.src = `data:${characterData.portrait.media_type};base64,${characterData.portrait.data}`;
         image.alt = `Portrait of ${characterData.name}`;
         image.addEventListener("error", () => { characterStatus.textContent = "Could not display portrait."; });
-        characterDisplay.append(image);
+        hero.append(image);
       }
-      for (const [name, label] of characterTextSpecs.slice(1, 3)) {
-        if (characterData[name]) {
-          const p = document.createElement("p");
-          p.textContent = `${label}: ${characterData[name]}`;
-          characterDisplay.append(p);
-        }
+      const identity = document.createElement("div");
+      const heading = document.createElement("h4");
+      heading.textContent = characterData.name;
+      identity.append(heading);
+      const traits = characterTextSpecs.slice(1, 3)
+        .filter(([name]) => characterData[name])
+        .map(([name, label]) => `${label}: ${characterData[name]}`);
+      if (traits.length) {
+        const p = document.createElement("p");
+        p.textContent = traits.join(" · ");
+        identity.append(p);
       }
       for (const entry of characterData.classes) {
         const p = document.createElement("p");
@@ -1060,18 +1250,34 @@
           p.append(span, document.createTextNode(" "));
         }
         if (entry.levels !== null) p.append(document.createTextNode(`Level ${entry.levels}`));
-        characterDisplay.append(p);
+        identity.append(p);
       }
-      const stats = document.createElement("div");
-      stats.className = "character-grid";
-      for (const [name, label] of characterNumberSpecs) {
-        const item = document.createElement("p");
-        item.textContent = `${label}: ${characterData[name] ?? "Not set"}`;
-        stats.append(item);
+      hero.append(identity);
+      sheet.append(hero);
+      for (const [group, names] of characterStatGroups) {
+        const section = document.createElement("section");
+        section.className = "character-section";
+        const title = document.createElement("h4");
+        title.textContent = group;
+        const stats = document.createElement("div");
+        stats.className = "character-stats";
+        for (const [name, label] of characterNumberSpecs.filter(([key]) => names.includes(key))) {
+          const item = document.createElement("div");
+          item.className = "character-stat";
+          const caption = document.createElement("span");
+          caption.textContent = label;
+          const value = document.createElement("strong");
+          value.textContent = characterData[name] ?? "Not set";
+          item.append(caption, value);
+          stats.append(item);
+        }
+        section.append(title, stats);
+        sheet.append(section);
       }
-      characterDisplay.append(stats);
       for (const [name, label] of characterTextSpecs.slice(3)) {
         if (!characterData[name]) continue;
+        const section = document.createElement("section");
+        section.className = "character-section character-prose";
         const title = document.createElement("h4");
         title.textContent = label;
         const content = document.createElement("div");
@@ -1089,8 +1295,10 @@
           p.textContent = characterData[name];
           content.append(p);
         }
-        characterDisplay.append(title, content);
+        section.append(title, content);
+        sheet.append(section);
       }
+      characterDisplay.append(sheet);
     }
 
     function renderCharacter() {
@@ -1399,6 +1607,34 @@
       }
     }
 
+    function updateUnreadCount(count) {
+      chatUnread.textContent = String(count);
+      chatUnread.hidden = count === 0;
+      chatTab.setAttribute("aria-label", count ? `Chat, ${count} unread messages` : "Chat");
+    }
+
+    function markVisibleChatRead() {
+      if (!socket?.connected || !chatHistoryReady || chatPanel.hidden || document.hidden ||
+          latestChatReceived <= chatReadAck || chatReadInFlight) return;
+      const version = sessionVersion;
+      const messageId = latestChatReceived;
+      chatReadInFlight = true;
+      socket.timeout(5000).emit("mark_chat_read", { message_id: messageId }, (error, result) => {
+        if (version !== sessionVersion) return;
+        chatReadInFlight = false;
+        if (error || !result || result.status !== "success") {
+          messageError.textContent = result?.message || "Could not mark chat as read. Reconnect or reopen chat to retry.";
+          return;
+        }
+        chatReadAck = Math.max(chatReadAck, messageId);
+        markVisibleChatRead();
+      });
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) markVisibleChatRead();
+    });
+
     function connectChat() {
       socket = io(backendOrigin, { transports: ["websocket"], auth: { token } });
       socket.on("connect", () => {
@@ -1415,6 +1651,7 @@
       socket.on("board_changed", loadBoard);
       socket.on("initiative_changed", initiativeChanged);
       socket.on("disconnect", async (reason) => {
+        chatHistoryReady = false;
         if (reason === "io client disconnect") return;
         connectionStatus.textContent = "Disconnected. Reconnecting...";
         updateControls();
@@ -1442,9 +1679,10 @@
       });
       function appendMessage(data) {
         if (!data || typeof data.sender !== "string" || typeof data.recipient !== "string" ||
-            typeof data.text !== "string") {
+            typeof data.text !== "string" || !Number.isSafeInteger(data.id) || data.id < 0) {
           console.error("Invalid message received:", data);
-          return;
+          messageError.textContent = "Invalid chat message received. Reconnect to reload.";
+          return false;
         }
         const player = currentRole === "dm"
           ? (data.sender === "dm" ? data.recipient : data.sender)
@@ -1452,7 +1690,7 @@
         const pane = panes.get(player);
         if (!pane) {
           messageError.textContent = "Received a message for an unknown conversation. Refresh to reload.";
-          return;
+          return false;
         }
         const box = pane.box;
         const row = document.createElement("div");
@@ -1461,6 +1699,8 @@
         row.append(sender, document.createTextNode(data.text));
         box.append(row);
         box.scrollTop = box.scrollHeight;
+        if (data.recipient === currentUser) latestChatReceived = Math.max(latestChatReceived, data.id);
+        return true;
       }
       socket.on("chat_history", (history) => {
         if (!history || typeof history !== "object" || Array.isArray(history)) {
@@ -1478,17 +1718,31 @@
             panes.delete(player);
           }
         }
+        let validHistory = true;
         for (const [player, messages] of Object.entries(history)) {
           if (!panes.has(player)) createPane(player);
           panes.get(player).box.replaceChildren();
-          messages.forEach(appendMessage);
+          for (const message of messages) {
+            if (!appendMessage(message)) validHistory = false;
+          }
         }
         if (currentRole === "dm" && Object.keys(history).length === 0) {
           messageError.textContent = "No player accounts found.";
         }
+        chatHistoryReady = validHistory;
+        if (validHistory) markVisibleChatRead();
         updateControls();
       });
-      socket.on("receive_message", appendMessage);
+      socket.on("receive_message", (message) => {
+        if (appendMessage(message)) markVisibleChatRead();
+      });
+      socket.on("chat_unread", (data) => {
+        if (!data || !Number.isSafeInteger(data.count) || data.count < 0) {
+          messageError.textContent = "Invalid unread count received.";
+          return;
+        }
+        updateUnreadCount(data.count);
+      });
     }
 
     function createPane(player) {

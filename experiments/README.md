@@ -11,6 +11,14 @@ Players also have Chat and Notes tabs. Players can create and edit multiple
 private Markdown notes. Switching tabs keeps unsaved edits; leaving or logging
 out warns about unsaved changes.
 The left navigation uses up and down arrow keys to switch tabs.
+The Theme selector offers Parchment (default) and Dark. The choice is saved
+in browser local storage, separately for each browser and device, and applies
+before login. If storage is unavailable, the selector reports that the choice
+cannot be saved.
+Shared layout and default color tokens live in `frontend/styles.css`; Dark
+overrides and its panel treatment live in `frontend/theme-dark.css`. To add a
+theme, provide its token and decorative overrides, link its stylesheet, and
+add its value to both the selector and the allowlist in `frontend/theme.js`.
 
 The Chat tab shows an account-wide unread count for incoming messages. It
 survives reconnects and restarts, including messages received while offline.

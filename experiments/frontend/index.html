@@ -24,6 +24,10 @@
     .board-note pre { overflow-x: auto; }
     #board-existing-images img { display: block; max-width: 12rem; max-height: 12rem; }
     .note-date { color: #777; font-size: .8rem; }
+    .character-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .5rem 1rem; }
+    .character-display img { max-width: min(100%, 24rem); }
+    .character-display p { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .initiative-current { border: 2px solid currentColor; padding: .5rem; }
   </style>
 </head>
 <body>
@@ -51,7 +55,9 @@
     <div id="player-tabs" role="tablist" aria-label="Sections" hidden>
       <button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel">Chat</button>
       <button id="notes-tab" type="button" role="tab" aria-selected="false" aria-controls="notes-panel" tabindex="-1">Notes</button>
+      <button id="character-tab" type="button" role="tab" aria-selected="false" aria-controls="character-panel" tabindex="-1">Character</button>
       <button id="board-tab" type="button" role="tab" aria-selected="false" aria-controls="board-panel" tabindex="-1">Board</button>
+      <button id="initiative-tab" type="button" role="tab" aria-selected="false" aria-controls="initiative-panel" tabindex="-1">Initiative</button>
     </div>
     <div id="chat-panel" role="region" aria-label="Chat">
       <p id="connection-status" role="status">Connecting...</p>
@@ -70,6 +76,26 @@
       <button id="notes-retry" type="button">Refresh notes</button>
       <p id="notes-status" role="status"></p>
       <div id="notes-list"></div>
+    </div>
+    <div id="character-panel" role="tabpanel" aria-labelledby="character-tab" hidden>
+      <h3>Character</h3>
+      <p id="character-status" role="status"></p>
+      <div id="character-display" class="character-display"></div>
+      <div id="dm-character-list"></div>
+      <button id="character-edit" type="button" disabled>Edit character</button>
+      <button id="character-reload" type="button">Reload character</button>
+      <form id="character-form" hidden>
+        <div id="character-fields" class="character-grid"></div>
+        <h4>Classes</h4>
+        <div id="character-classes"></div>
+        <button id="character-add-class" type="button">Add class</button>
+        <label for="character-portrait">Character portrait (PNG, JPEG or WebP; maximum 2 MiB)</label>
+        <input id="character-portrait" type="file" accept="image/png,image/jpeg,image/webp">
+        <label><input id="character-remove-portrait" type="checkbox"> Remove current portrait</label>
+        <div id="character-text-fields"></div>
+        <button id="character-save" type="submit">Save character</button>
+        <button id="character-cancel" type="button">Cancel</button>
+      </form>
     </div>
     <div id="board-panel" role="tabpanel" aria-labelledby="board-tab" hidden>
       <h3>Public board</h3>
@@ -92,6 +118,37 @@
       <p id="board-status" role="status"></p>
       <div id="board-list"></div>
     </div>
+    <div id="initiative-panel" role="tabpanel" aria-labelledby="initiative-tab" hidden>
+      <h3>Initiative</h3>
+      <p id="initiative-status" role="status"></p>
+      <button id="initiative-refresh" type="button">Reload initiative</button>
+      <div id="initiative-dm" hidden>
+        <form id="initiative-add">
+          <label for="initiative-name">Character or monster</label>
+          <input id="initiative-name" maxlength="200" required>
+          <label for="initiative-value">Initiative</label>
+          <input id="initiative-value" type="number" min="-10000" max="10000" step="1" value="0" required>
+          <label for="initiative-hp">Maximum hit points</label>
+          <input id="initiative-hp" type="number" min="1" max="1000000" step="1" value="10" required>
+          <button type="submit" data-initiative-action>Add combatant</button>
+        </form>
+        <button id="initiative-next" type="button" data-initiative-action>Next turn</button>
+        <button id="initiative-sort" type="button" data-initiative-action>Reorder by initiative</button>
+        <form id="initiative-edit">
+          <fieldset id="initiative-fields"><legend>Combatants</legend><div id="initiative-edit-list"></div></fieldset>
+          <button id="initiative-save" type="submit">Save combatant changes</button>
+        </form>
+        <h4>Saved encounters</h4>
+        <p>Saved encounters are snapshots; later tracker changes do not update them.</p>
+        <form id="initiative-encounter-form">
+          <label for="initiative-encounter-name">Encounter name</label>
+          <input id="initiative-encounter-name" maxlength="200" required>
+          <button type="submit" data-initiative-action>Save new encounter</button>
+        </form>
+        <div id="initiative-encounters"></div>
+      </div>
+      <div id="initiative-player-list"></div>
+    </div>
   </section>
 
   <script>
@@ -111,6 +168,19 @@
     const notesSave = document.getElementById("notes-save");
     const notesRetry = document.getElementById("notes-retry");
     const notesStatus = document.getElementById("notes-status");
+    const characterTab = document.getElementById("character-tab");
+    const characterPanel = document.getElementById("character-panel");
+    const characterForm = document.getElementById("character-form");
+    const characterDisplay = document.getElementById("character-display");
+    const dmCharacterList = document.getElementById("dm-character-list");
+    const characterStatus = document.getElementById("character-status");
+    const characterEditButton = document.getElementById("character-edit");
+    const characterReloadButton = document.getElementById("character-reload");
+    const characterFields = document.getElementById("character-fields");
+    const characterTextFields = document.getElementById("character-text-fields");
+    const characterClasses = document.getElementById("character-classes");
+    const characterPortrait = document.getElementById("character-portrait");
+    const characterRemovePortrait = document.getElementById("character-remove-portrait");
     const boardTab = document.getElementById("board-tab");
     const boardPanel = document.getElementById("board-panel");
     const boardEditor = document.getElementById("board-editor");
@@ -123,6 +193,17 @@
     const boardCancel = document.getElementById("board-cancel");
     const boardStatus = document.getElementById("board-status");
     const boardList = document.getElementById("board-list");
+    const initiativeTab = document.getElementById("initiative-tab");
+    const initiativePanel = document.getElementById("initiative-panel");
+    const initiativeDm = document.getElementById("initiative-dm");
+    const initiativeStatus = document.getElementById("initiative-status");
+    const initiativeFields = document.getElementById("initiative-fields");
+    const initiativeEditList = document.getElementById("initiative-edit-list");
+    const initiativePlayerList = document.getElementById("initiative-player-list");
+    const initiativeEncounters = document.getElementById("initiative-encounters");
+    const initiativeAdd = document.getElementById("initiative-add");
+    const initiativeEdit = document.getElementById("initiative-edit");
+    const initiativeEncounterForm = document.getElementById("initiative-encounter-form");
     if (location.protocol === "https:") {
       document.getElementById("backend-url").value = location.origin;
     }
@@ -137,12 +218,21 @@
     let notesLoadVersion = 0;
     let notesLoaded = false;
     let notesSaving = false;
+    let characterData = null;
+    let characterBaseline = "";
+    let characterSaving = false;
+    let characterLoadVersion = 0;
     let boardSaving = false;
     let loggingOut = false;
     let boardEdit = null;
     let boardAttachments = [];
     let boardBaseline = { header: "", content: "", visible: false };
     let boardLoadVersion = 0;
+    let initiativeData = null;
+    let initiativeDirty = false;
+    let initiativeSaving = false;
+    let initiativeLoadVersion = 0;
+    let initiativeRefreshPending = false;
     const panes = new Map();
     const storageKey = "split-chat-session";
 
@@ -215,7 +305,14 @@
       currentRole = role;
       playerTabs.hidden = false;
       notesTab.hidden = role !== "player";
+      characterTab.hidden = role !== "player" && !(role === "dm" && username === "dm");
+      characterTab.textContent = role === "dm" ? "Characters" : "Character";
+      characterEditButton.hidden = role !== "player";
+      characterDisplay.hidden = role !== "player";
+      dmCharacterList.hidden = role !== "dm";
       boardEditor.hidden = username !== "dm" || role !== "dm";
+      initiativeTab.hidden = role !== "player" && !(role === "dm" && username === "dm");
+      initiativeDm.hidden = username !== "dm" || role !== "dm";
       chatPanel.setAttribute("role", "tabpanel");
       chatPanel.setAttribute("aria-labelledby", "chat-tab");
       chatPanel.removeAttribute("aria-label");
@@ -224,7 +321,10 @@
       document.getElementById("login-view").hidden = true;
       document.getElementById("chat-view").hidden = false;
       connectChat();
-      if (role === "player") loadNotes();
+      if (role === "player") {
+        loadNotes();
+        loadCharacter();
+      }
       loadBoard();
     }
 
@@ -233,6 +333,8 @@
           !confirm(`${message}\nDiscard unsaved changes and return to login?`)) {
         notesStatus.textContent = "Session ended. Copy unsaved notes before logging in again.";
         boardStatus.textContent = "Session ended. Copy unsaved board edits before logging in again.";
+        characterStatus.textContent = "Session ended. Copy unsaved character edits before logging in again.";
+        initiativeStatus.textContent = "Session ended. Copy unsaved initiative edits before logging in again.";
         return;
       }
       sessionVersion++;
@@ -255,11 +357,35 @@
       notesSave.disabled = true;
       notesCancel.disabled = true;
       notesStatus.textContent = "";
+      characterLoadVersion++;
+      characterData = null;
+      characterSaving = false;
+      characterBaseline = "";
+      characterForm.hidden = true;
+      characterForm.reset();
+      for (const control of characterForm.elements) control.disabled = false;
+      characterReloadButton.disabled = false;
+      characterClasses.replaceChildren();
+      characterDisplay.replaceChildren();
+      dmCharacterList.replaceChildren();
+      characterEditButton.disabled = true;
+      characterStatus.textContent = "";
       boardLoadVersion++;
       boardSaving = false;
       boardList.replaceChildren();
       boardStatus.textContent = "";
       resetBoardEditor();
+      initiativeLoadVersion++;
+      initiativeData = null;
+      initiativeDirty = false;
+      initiativeSaving = false;
+      initiativeRefreshPending = false;
+      initiativeAdd.reset();
+      initiativeEncounterForm.reset();
+      initiativeEditList.replaceChildren();
+      initiativePlayerList.replaceChildren();
+      initiativeEncounters.replaceChildren();
+      initiativeStatus.textContent = "";
       document.getElementById("chat-view").hidden = true;
       document.getElementById("login-view").hidden = false;
       document.getElementById("login-error").textContent = message;
@@ -267,28 +393,275 @@
     }
 
     function selectTab(selected) {
-      for (const tab of [chatTab, notesTab, boardTab]) {
+      for (const tab of [chatTab, notesTab, characterTab, boardTab, initiativeTab]) {
         const active = tab === selected;
         tab.setAttribute("aria-selected", String(active));
         tab.tabIndex = active ? 0 : -1;
       }
       chatPanel.hidden = selected !== chatTab;
       notesPanel.hidden = selected !== notesTab;
+      characterPanel.hidden = selected !== characterTab;
       boardPanel.hidden = selected !== boardTab;
+      initiativePanel.hidden = selected !== initiativeTab;
+      if (selected === characterTab && currentRole === "dm" && currentUser === "dm") loadCharacters();
+      if (selected === initiativeTab && !initiativeDirty) loadInitiative();
     }
 
     playerTabs.addEventListener("click", (event) => {
-      if ([chatTab, notesTab, boardTab].includes(event.target)) selectTab(event.target);
+      if ([chatTab, notesTab, characterTab, boardTab, initiativeTab].includes(event.target)) selectTab(event.target);
     });
     playerTabs.addEventListener("keydown", (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
-      const tabs = [chatTab, notesTab, boardTab].filter((tab) => !tab.hidden);
+      const tabs = [chatTab, notesTab, characterTab, boardTab, initiativeTab].filter((tab) => !tab.hidden);
       const index = tabs.indexOf(document.activeElement);
       const selected = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs[tabs.length - 1] :
         tabs[(index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
       selectTab(selected);
       selected.focus();
+    });
+
+    function updateInitiativeControls() {
+      for (const button of initiativePanel.querySelectorAll("[data-initiative-action]")) {
+        button.disabled = !initiativeData || initiativeSaving || initiativeDirty || loggingOut;
+      }
+      for (const input of initiativeAdd.querySelectorAll("input")) input.disabled = initiativeSaving || loggingOut;
+      for (const input of initiativeEncounterForm.querySelectorAll("input")) input.disabled = initiativeSaving || loggingOut;
+      initiativeFields.disabled = !initiativeData || initiativeSaving || loggingOut;
+      document.getElementById("initiative-save").disabled = !initiativeData || initiativeSaving || !initiativeDirty || loggingOut;
+      document.getElementById("initiative-refresh").disabled = initiativeSaving || loggingOut;
+    }
+
+    function initiativeChanged() {
+      if (initiativeSaving) {
+        initiativeRefreshPending = true;
+      } else if (initiativeDirty) {
+        initiativeStatus.textContent = "Initiative changed elsewhere. Copy your edits, then reload before saving.";
+      } else if (initiativeData) {
+        loadInitiative();
+      }
+    }
+
+    async function loadInitiative() {
+      if (initiativeSaving || initiativeDirty) return;
+      const version = sessionVersion;
+      const loadVersion = ++initiativeLoadVersion;
+      try {
+        const response = await fetch(`${backendOrigin}/api/initiative`, {
+          headers: { "Authorization": "Bearer " + token, "ngrok-skip-browser-warning": "true" },
+        });
+        if (!response.ok) throw new Error(`Loading initiative failed (${response.status}).`);
+        const data = await response.json();
+        if (version !== sessionVersion || loadVersion !== initiativeLoadVersion || initiativeDirty || initiativeSaving) return;
+        initiativeData = data.initiative;
+        renderInitiative();
+        initiativeStatus.textContent = "";
+      } catch (error) {
+        if (version !== sessionVersion || loadVersion !== initiativeLoadVersion) return;
+        console.error("Could not load initiative:", error);
+        initiativeStatus.textContent = "Could not load initiative. Use Reload initiative to retry.";
+      }
+    }
+
+    async function saveInitiative(next) {
+      if (initiativeSaving || !initiativeData) return false;
+      const version = sessionVersion;
+      initiativeLoadVersion++;
+      initiativeSaving = true;
+      updateInitiativeControls();
+      let saved = false;
+      try {
+        const response = await fetch(`${backendOrigin}/api/initiative`, {
+          method: "PUT",
+          headers: {
+            "Authorization": "Bearer " + token, "Content-Type": "application/json",
+            "ngrok-skip-browser-warning": "true",
+          },
+          body: JSON.stringify(next),
+        });
+        const data = await response.json();
+        if (version !== sessionVersion) return false;
+        if (!response.ok) throw new Error(data.message || `Saving initiative failed (${response.status}).`);
+        initiativeData = data.initiative;
+        initiativeDirty = false;
+        renderInitiative();
+        initiativeStatus.textContent = "Initiative saved.";
+        saved = true;
+      } catch (error) {
+        if (version !== sessionVersion) return false;
+        console.error("Could not save initiative:", error);
+        initiativeStatus.textContent = error.message || "Could not save initiative.";
+      } finally {
+        if (version === sessionVersion) {
+          initiativeSaving = false;
+          updateInitiativeControls();
+          if (initiativeRefreshPending) {
+            initiativeRefreshPending = false;
+            if (saved) loadInitiative();
+          }
+        }
+      }
+      return saved;
+    }
+
+    function initiativeButton(label, action) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.dataset.initiativeAction = "";
+      button.addEventListener("click", action);
+      return button;
+    }
+
+    function renderInitiative() {
+      initiativeEditList.replaceChildren();
+      initiativePlayerList.replaceChildren();
+      initiativeEncounters.replaceChildren();
+      const tracker = initiativeData.tracker;
+      if (initiativeDm.hidden) {
+        if (!tracker.combatants.length) initiativePlayerList.textContent = "No visible combatants.";
+        for (const actor of tracker.combatants) {
+          const item = document.createElement("p");
+          item.textContent = `${actor.name} — initiative ${actor.initiative}${actor.dead ? " — defeated" : ""}` +
+            (actor.id === tracker.current_turn_id ? " — current turn" : "");
+          if (actor.id === tracker.current_turn_id) item.className = "initiative-current";
+          initiativePlayerList.append(item);
+        }
+      } else {
+        if (!tracker.combatants.length) initiativeEditList.textContent = "No combatants yet.";
+        for (const [index, actor] of tracker.combatants.entries()) {
+          const group = document.createElement("fieldset");
+          const legend = document.createElement("legend");
+          legend.textContent = `${actor.name}${actor.id === tracker.current_turn_id ? " — current turn" : ""}`;
+          group.append(legend);
+          if (actor.id === tracker.current_turn_id) group.className = "initiative-current";
+          for (const [key, title, type, min, max] of [
+            ["name", "Name", "text", null, 200],
+            ["initiative", "Initiative", "number", -10000, 10000],
+            ["current_hp", "Current hit points", "number", 0, 1000000],
+            ["max_hp", "Maximum hit points", "number", 1, 1000000],
+            ["visible", "Visible to players", "checkbox", null, null],
+            ["dead", "Defeated", "checkbox", null, null],
+          ]) {
+            const label = document.createElement("label");
+            const input = document.createElement("input");
+            input.type = type;
+            input.dataset.index = String(index);
+            input.dataset.field = key;
+            if (type === "checkbox") {
+              input.checked = actor[key];
+              label.append(input, document.createTextNode(` ${title}`));
+            } else {
+              input.value = actor[key];
+              input.required = true;
+              if (type === "text") input.maxLength = max;
+              else { input.min = String(min); input.max = String(max); input.step = "1"; }
+              label.append(document.createTextNode(title), input);
+            }
+            group.append(label);
+          }
+          group.append(initiativeButton("Remove combatant", () => {
+            if (!confirm(`Remove ${actor.name} from the live tracker?`)) return;
+            const next = structuredClone(initiativeData);
+            next.tracker.combatants.splice(index, 1);
+            if (next.tracker.current_turn_id === actor.id) next.tracker.current_turn_id = null;
+            saveInitiative(next);
+          }));
+          initiativeEditList.append(group);
+        }
+        for (const encounter of initiativeData.encounters) {
+          const item = document.createElement("div");
+          const label = document.createElement("strong");
+          label.textContent = encounter.name;
+          item.append(label);
+          item.append(initiativeButton("Load", () => {
+            if (!confirm(`Replace the live tracker with ${encounter.name}?`)) return;
+            const next = structuredClone(initiativeData);
+            next.tracker = structuredClone(encounter.tracker);
+            saveInitiative(next);
+          }));
+          item.append(initiativeButton("Overwrite", () => {
+            if (!confirm(`Overwrite ${encounter.name} with the live tracker?`)) return;
+            const next = structuredClone(initiativeData);
+            next.encounters.find((entry) => entry.id === encounter.id).tracker = structuredClone(next.tracker);
+            saveInitiative(next);
+          }));
+          item.append(initiativeButton("Delete", () => {
+            if (!confirm(`Delete saved encounter ${encounter.name}?`)) return;
+            const next = structuredClone(initiativeData);
+            next.encounters = next.encounters.filter((entry) => entry.id !== encounter.id);
+            saveInitiative(next);
+          }));
+          initiativeEncounters.append(item);
+        }
+        if (!initiativeData.encounters.length) initiativeEncounters.textContent = "No saved encounters.";
+      }
+      updateInitiativeControls();
+    }
+
+    initiativeEdit.addEventListener("input", () => {
+      initiativeDirty = true;
+      updateInitiativeControls();
+    });
+    initiativeEdit.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!initiativeData || initiativeSaving || !initiativeDirty) return;
+      const next = structuredClone(initiativeData);
+      for (const input of initiativeEditList.querySelectorAll("input")) {
+        const value = input.type === "checkbox" ? input.checked :
+          input.type === "number" ? Number(input.value) : input.value.trim();
+        next.tracker.combatants[Number(input.dataset.index)][input.dataset.field] = value;
+      }
+      if (next.tracker.combatants.some((actor) => !actor.name || actor.current_hp > actor.max_hp)) {
+        initiativeStatus.textContent = "Enter names and ensure current hit points do not exceed maximum hit points.";
+        return;
+      }
+      if (next.tracker.combatants.some((actor) => actor.id === next.tracker.current_turn_id && actor.dead)) {
+        next.tracker.current_turn_id = null;
+      }
+      saveInitiative(next);
+    });
+    initiativeAdd.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!initiativeData || initiativeDirty || initiativeSaving) return;
+      const name = document.getElementById("initiative-name").value.trim();
+      if (!name) { initiativeStatus.textContent = "Enter a combatant name."; return; }
+      const next = structuredClone(initiativeData);
+      const hp = Number(document.getElementById("initiative-hp").value);
+      next.tracker.combatants.push({
+        id: crypto.randomUUID(), name, initiative: Number(document.getElementById("initiative-value").value),
+        current_hp: hp, max_hp: hp, visible: true, dead: false,
+      });
+      if (await saveInitiative(next)) initiativeAdd.reset();
+    });
+    document.getElementById("initiative-next").addEventListener("click", () => {
+      if (!initiativeData || initiativeDirty || initiativeSaving) return;
+      const next = structuredClone(initiativeData);
+      const living = next.tracker.combatants.filter((actor) => !actor.dead);
+      if (!living.length) { initiativeStatus.textContent = "No living combatants."; return; }
+      const index = living.findIndex((actor) => actor.id === next.tracker.current_turn_id);
+      next.tracker.current_turn_id = living[(index + 1) % living.length].id;
+      saveInitiative(next);
+    });
+    document.getElementById("initiative-sort").addEventListener("click", () => {
+      if (!initiativeData || initiativeDirty || initiativeSaving) return;
+      const next = structuredClone(initiativeData);
+      next.tracker.combatants.sort((a, b) => b.initiative - a.initiative);
+      saveInitiative(next);
+    });
+    initiativeEncounterForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!initiativeData || initiativeDirty || initiativeSaving) return;
+      const name = document.getElementById("initiative-encounter-name").value.trim();
+      if (!name) { initiativeStatus.textContent = "Enter an encounter name."; return; }
+      const next = structuredClone(initiativeData);
+      next.encounters.push({ id: crypto.randomUUID(), name, tracker: structuredClone(next.tracker) });
+      if (await saveInitiative(next)) initiativeEncounterForm.reset();
+    });
+    document.getElementById("initiative-refresh").addEventListener("click", () => {
+      if (initiativeDirty && !confirm("Discard unsaved combatant changes and reload initiative?")) return;
+      initiativeDirty = false;
+      loadInitiative();
     });
 
     function boardDirty() {
@@ -299,7 +672,11 @@
 
     function hasUnsavedChanges() {
       return (notesLoaded && (notesSaving || notesDirty())) ||
-        (!boardEditor.hidden && (boardSaving || boardDirty()));
+        (!boardEditor.hidden && (boardSaving || boardDirty())) ||
+        (!characterForm.hidden && (characterSaving || characterDirty())) ||
+        (!initiativeDm.hidden && (initiativeSaving || initiativeDirty ||
+          document.getElementById("initiative-name").value.trim() !== "" ||
+          document.getElementById("initiative-encounter-name").value.trim() !== ""));
     }
 
     function resetBoardEditor(note = null) {
@@ -549,6 +926,333 @@
       notesCancel.textContent = note ? "Cancel editing" : "Clear editor";
     }
 
+    const characterTextSpecs = [
+      ["name", "Character name"], ["race", "Race"], ["gender", "Gender"],
+      ["character_description", "Character description (Markdown)"],
+      ["background", "Character background"], ["story", "Character story"],
+    ];
+    const characterNumberSpecs = [
+      ["passive_perception", "Passive perception", 0, 10000],
+      ["passive_insight", "Passive insight", 0, 10000],
+      ["armor_class", "Armor class", 0, 10000], ["max_hp", "Maximum HP", 0, 1000000],
+      ["initiative_bonus", "Initiative bonus", -10000, 10000],
+      ["strength", "Strength", 0, 1000], ["dexterity", "Dexterity", 0, 1000],
+      ["constitution", "Constitution", 0, 1000], ["intelligence", "Intelligence", 0, 1000],
+      ["wisdom", "Wisdom", 0, 1000], ["charisma", "Charisma", 0, 1000],
+      ["speed_walk", "Walking speed (ft)", 0, 10000], ["speed_fly", "Flying speed (ft)", 0, 10000],
+      ["speed_swim", "Swimming speed (ft)", 0, 10000], ["speed_climb", "Climbing speed (ft)", 0, 10000],
+      ["speed_burrow", "Burrowing speed (ft)", 0, 10000],
+    ];
+    const classSpecs = [
+      ["class_name", "Class name"], ["class_url", "Class URL"], ["subclass_name", "Subclass"],
+      ["subclass_url", "Subclass URL"], ["levels", "Levels"],
+    ];
+
+    function characterInput(name, label, options = {}) {
+      const wrapper = document.createElement("label");
+      wrapper.textContent = label;
+      const input = document.createElement(options.multiline ? "textarea" : "input");
+      input.name = name;
+      if (options.multiline) {
+        input.rows = 5;
+        input.maxLength = 100000;
+      } else {
+        input.type = options.numeric ? "number" : "text";
+        if (options.numeric) {
+          input.min = options.min;
+          input.max = options.max;
+          input.step = "1";
+        } else input.maxLength = options.maxLength || 200;
+      }
+      if (options.required) input.required = true;
+      wrapper.append(input);
+      return wrapper;
+    }
+
+    for (const [name, label] of characterTextSpecs) {
+      const multiline = ["character_description", "background", "story"].includes(name);
+      (multiline ? characterTextFields : characterFields).append(
+        characterInput(name, label, { multiline, required: name === "name" })
+      );
+    }
+    for (const [name, label, min, max] of characterNumberSpecs) {
+      characterFields.append(characterInput(name, label, { numeric: true, min, max }));
+    }
+
+    function addCharacterClass(entry = {}) {
+      const group = document.createElement("fieldset");
+      const legend = document.createElement("legend");
+      legend.textContent = "Class";
+      group.append(legend);
+      for (const [name, label] of classSpecs) {
+        const wrapper = characterInput(name, label, name === "levels" ?
+          { numeric: true, min: 1, max: 100 } : { maxLength: name.endsWith("_url") ? 2048 : 200 });
+        wrapper.querySelector("input").value = entry[name] ?? "";
+        group.append(wrapper);
+      }
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Remove class";
+      remove.addEventListener("click", () => group.remove());
+      group.append(remove);
+      characterClasses.append(group);
+    }
+
+    function characterDraft() {
+      const fields = {};
+      for (const [name] of characterTextSpecs) fields[name] = characterForm.elements[name].value;
+      for (const [name] of characterNumberSpecs) {
+        const value = characterForm.elements[name].value;
+        fields[name] = value === "" ? null : Number(value);
+      }
+      fields.classes = Array.from(characterClasses.querySelectorAll("fieldset"), (group) => {
+        const entry = {};
+        for (const [name] of classSpecs) {
+          const value = group.querySelector(`[name="${name}"]`).value;
+          entry[name] = name === "levels" ? (value === "" ? null : Number(value)) : value;
+        }
+        return entry;
+      });
+      return fields;
+    }
+
+    function characterDirty() {
+      return JSON.stringify(characterDraft()) !== characterBaseline ||
+        characterPortrait.files.length > 0 || characterRemovePortrait.checked;
+    }
+
+    function renderCharacterSheet(characterData, characterDisplay) {
+      characterDisplay.replaceChildren();
+      if (!characterData.name) {
+        characterDisplay.textContent = "No character saved yet.";
+        return;
+      }
+      const heading = document.createElement("h4");
+      heading.textContent = characterData.name;
+      characterDisplay.append(heading);
+      if (characterData.portrait) {
+        const image = document.createElement("img");
+        image.src = `data:${characterData.portrait.media_type};base64,${characterData.portrait.data}`;
+        image.alt = `Portrait of ${characterData.name}`;
+        image.addEventListener("error", () => { characterStatus.textContent = "Could not display portrait."; });
+        characterDisplay.append(image);
+      }
+      for (const [name, label] of characterTextSpecs.slice(1, 3)) {
+        if (characterData[name]) {
+          const p = document.createElement("p");
+          p.textContent = `${label}: ${characterData[name]}`;
+          characterDisplay.append(p);
+        }
+      }
+      for (const entry of characterData.classes) {
+        const p = document.createElement("p");
+        for (const [name, url, label] of [
+          ["class_name", "class_url", "Class"], ["subclass_name", "subclass_url", "Subclass"],
+        ]) {
+          if (!entry[name]) continue;
+          const span = entry[url] ? document.createElement("a") : document.createElement("span");
+          span.textContent = `${label}: ${entry[name]}`;
+          if (entry[url]) {
+            span.href = entry[url];
+            span.target = "_blank";
+            span.rel = "noopener noreferrer";
+          }
+          p.append(span, document.createTextNode(" "));
+        }
+        if (entry.levels !== null) p.append(document.createTextNode(`Level ${entry.levels}`));
+        characterDisplay.append(p);
+      }
+      const stats = document.createElement("div");
+      stats.className = "character-grid";
+      for (const [name, label] of characterNumberSpecs) {
+        const item = document.createElement("p");
+        item.textContent = `${label}: ${characterData[name] ?? "Not set"}`;
+        stats.append(item);
+      }
+      characterDisplay.append(stats);
+      for (const [name, label] of characterTextSpecs.slice(3)) {
+        if (!characterData[name]) continue;
+        const title = document.createElement("h4");
+        title.textContent = label;
+        const content = document.createElement("div");
+        if (name === "character_description") {
+          if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+            content.textContent = characterData[name];
+            characterStatus.textContent = "Markdown renderer unavailable; description shown as text.";
+          } else {
+            content.innerHTML = DOMPurify.sanitize(marked.parse(characterData[name]), {
+              USE_PROFILES: { html: true }, FORBID_TAGS: ["style"], FORBID_ATTR: ["style"],
+            });
+          }
+        } else {
+          const p = document.createElement("p");
+          p.textContent = characterData[name];
+          content.append(p);
+        }
+        characterDisplay.append(title, content);
+      }
+    }
+
+    function renderCharacter() {
+      renderCharacterSheet(characterData, characterDisplay);
+    }
+
+    async function loadCharacters() {
+      const version = sessionVersion;
+      const loadVersion = ++characterLoadVersion;
+      characterStatus.textContent = "Loading player characters...";
+      try {
+        const response = await fetch(`${backendOrigin}/api/characters`, {
+          headers: { "Authorization": "Bearer " + token, "ngrok-skip-browser-warning": "true" },
+        });
+        if (!response.ok) throw new Error(`Loading characters failed (${response.status}).`);
+        const result = await response.json();
+        if (!Array.isArray(result.characters) || result.characters.some((entry) =>
+          !entry || typeof entry.username !== "string" ||
+          (entry.character !== null && (!entry.character ||
+            typeof entry.character.name !== "string" || !Array.isArray(entry.character.classes) ||
+            !Number.isInteger(entry.character.revision))))) {
+          throw new Error("Invalid characters response.");
+        }
+        if (version !== sessionVersion || loadVersion !== characterLoadVersion) return;
+        const openPlayers = new Set(Array.from(dmCharacterList.querySelectorAll("details[open]"),
+          (element) => element.dataset.username));
+        const sheets = result.characters.map(({ username, character }) => {
+          const section = document.createElement("details");
+          section.className = "board-note";
+          section.dataset.username = username;
+          section.open = openPlayers.has(username);
+          const heading = document.createElement("summary");
+          heading.textContent = character?.name ? `${character.name} (${username})` : username;
+          const sheet = document.createElement("div");
+          sheet.className = "character-display";
+          if (character) renderCharacterSheet(character, sheet);
+          else sheet.textContent = "No character saved yet.";
+          section.append(heading, sheet);
+          return section;
+        });
+        dmCharacterList.replaceChildren(...sheets);
+        characterStatus.textContent = sheets.length ? "" : "No player accounts found.";
+      } catch (error) {
+        if (version !== sessionVersion || loadVersion !== characterLoadVersion) return;
+        console.error("Could not load player characters:", error);
+        characterStatus.textContent = "Could not load player characters. Check your session and connection, then retry.";
+      }
+    }
+
+    async function loadCharacter() {
+      if (!characterForm.hidden && (characterSaving || characterDirty())) {
+        characterStatus.textContent = "Cancel or save your edits before reloading.";
+        return;
+      }
+      const version = sessionVersion;
+      const loadVersion = ++characterLoadVersion;
+      characterStatus.textContent = "Loading character...";
+      try {
+        const response = await fetch(`${backendOrigin}/api/character`, {
+          headers: { "Authorization": "Bearer " + token, "ngrok-skip-browser-warning": "true" },
+        });
+        if (!response.ok) throw new Error(`Loading character failed (${response.status}).`);
+        const result = await response.json();
+        if (!result.character || typeof result.character.name !== "string" ||
+            !Array.isArray(result.character.classes) || !Number.isInteger(result.character.revision)) {
+          throw new Error("Invalid character response.");
+        }
+        if (version !== sessionVersion || loadVersion !== characterLoadVersion) return;
+        characterData = result.character;
+        characterForm.hidden = true;
+        characterEditButton.disabled = false;
+        characterStatus.textContent = "";
+        renderCharacter();
+      } catch (error) {
+        if (version !== sessionVersion || loadVersion !== characterLoadVersion) return;
+        console.error("Could not load character:", error);
+        characterStatus.textContent = "Could not load character. Check your session and connection, then retry.";
+      }
+    }
+
+    characterEditButton.addEventListener("click", () => {
+      if (!characterData || characterSaving) return;
+      characterLoadVersion++;
+      for (const [name] of [...characterTextSpecs, ...characterNumberSpecs]) {
+        characterForm.elements[name].value = characterData[name] ?? "";
+      }
+      characterClasses.replaceChildren();
+      characterData.classes.forEach(addCharacterClass);
+      characterPortrait.value = "";
+      characterRemovePortrait.checked = false;
+      characterBaseline = JSON.stringify(characterDraft());
+      characterForm.hidden = false;
+      characterStatus.textContent = "Editing character.";
+    });
+    document.getElementById("character-add-class").addEventListener("click", () => {
+      if (characterClasses.children.length >= 20) {
+        characterStatus.textContent = "At most 20 classes are supported.";
+        return;
+      }
+      addCharacterClass();
+    });
+    document.getElementById("character-cancel").addEventListener("click", () => {
+      if (characterSaving || characterDirty() && !confirm("Discard unsaved character changes?")) return;
+      characterForm.hidden = true;
+      characterStatus.textContent = "";
+    });
+    characterReloadButton.addEventListener("click", () => {
+      if (currentRole === "player") loadCharacter();
+      else loadCharacters();
+    });
+    characterForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (characterSaving || !characterData) return;
+      const draft = characterDraft();
+      if (!draft.name.trim()) {
+        characterStatus.textContent = "Enter a character name.";
+        return;
+      }
+      const version = sessionVersion;
+      characterSaving = true;
+      characterReloadButton.disabled = true;
+      characterEditButton.disabled = true;
+      for (const control of characterForm.elements) control.disabled = true;
+      characterStatus.textContent = "Saving character...";
+      try {
+        let portrait = characterRemovePortrait.checked ? null : characterData.portrait;
+        if (characterPortrait.files.length) {
+          portrait = await readBoardImage(characterPortrait.files[0]);
+          if (portrait.media_type === "image/gif") throw new Error("Portrait must be PNG, JPEG or WebP.");
+        }
+        if (version !== sessionVersion) return;
+        const response = await fetch(`${backendOrigin}/api/character`, {
+          method: "PUT",
+          headers: {
+            "Authorization": "Bearer " + token, "Content-Type": "application/json",
+            "ngrok-skip-browser-warning": "true",
+          },
+          body: JSON.stringify({ ...draft, portrait, revision: characterData.revision }),
+        });
+        const result = await response.json();
+        if (!response.ok || result.status !== "success") {
+          throw new Error(result.message || `Saving character failed (${response.status}).`);
+        }
+        if (version !== sessionVersion) return;
+        characterData = result.character;
+        characterForm.hidden = true;
+        characterStatus.textContent = "Character saved.";
+        renderCharacter();
+      } catch (error) {
+        if (version !== sessionVersion) return;
+        console.error("Could not save character:", error);
+        characterStatus.textContent = `${error.message} Your edits are retained; save may have succeeded.`;
+      } finally {
+        if (version === sessionVersion) {
+          characterSaving = false;
+          characterReloadButton.disabled = false;
+          characterEditButton.disabled = false;
+          for (const control of characterForm.elements) control.disabled = false;
+        }
+      }
+    });
+
     async function loadNotes() {
       const version = sessionVersion;
       const loadVersion = ++notesLoadVersion;
@@ -701,6 +1405,7 @@
         connectionStatus.textContent = "Connected.";
         updateControls();
         loadBoard();
+        if (initiativeData) initiativeChanged();
         socket.timeout(5000).emit("get_history", (error, result) => {
           if (error || !result || result.status !== "success") {
             messageError.textContent = result?.message || "Could not load chat history.";
@@ -708,6 +1413,7 @@
         });
       });
       socket.on("board_changed", loadBoard);
+      socket.on("initiative_changed", initiativeChanged);
       socket.on("disconnect", async (reason) => {
         if (reason === "io client disconnect") return;
         connectionStatus.textContent = "Disconnected. Reconnecting...";
@@ -833,14 +1539,17 @@
     }
 
     document.getElementById("logout-button").addEventListener("click", async () => {
-      if (notesSaving || boardSaving) {
+      if (notesSaving || boardSaving || characterSaving || initiativeSaving) {
         notesStatus.textContent = "Wait for the current save to finish before logging out.";
         boardStatus.textContent = "Wait for the current save to finish before logging out.";
+        characterStatus.textContent = "Wait for the current save to finish before logging out.";
+        initiativeStatus.textContent = "Wait for the current save to finish before logging out.";
         return;
       }
       if (hasUnsavedChanges() && !confirm("Discard unsaved changes and log out?")) return;
       const logoutButton = document.getElementById("logout-button");
       loggingOut = true;
+      updateInitiativeControls();
       logoutButton.disabled = true;
       notesInput.disabled = true;
       notesHeader.disabled = true;
@@ -853,6 +1562,9 @@
       boardVisible.disabled = true;
       boardSave.disabled = true;
       boardCancel.disabled = true;
+      for (const control of characterForm.elements) control.disabled = true;
+      characterEditButton.disabled = true;
+      characterReloadButton.disabled = true;
       try {
         const response = await fetch(`${backendOrigin}/api/logout`, {
           method: "POST",
@@ -883,8 +1595,13 @@
         boardSave.disabled = false;
         boardCancel.disabled = false;
         boardStatus.textContent = "Logout failed. Check the backend and try again.";
+        for (const control of characterForm.elements) control.disabled = false;
+        characterEditButton.disabled = !characterData;
+        characterReloadButton.disabled = false;
+        characterStatus.textContent = "Logout failed. Check the backend and try again.";
       } finally {
         loggingOut = false;
+        updateInitiativeControls();
         logoutButton.disabled = false;
       }
     });

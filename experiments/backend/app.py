@@ -29,7 +29,8 @@ from werkzeug.security import check_password_hash
 
 from models import (
     MAX_IMAGE_BYTES, MAX_NOTE_LENGTH, MIN_PASSWORD_LENGTH, BoardImage, BoardNote, BoardNoteRequest, BoardNoteUpdate,
-    LoginRequest, MessageRequest, NoteRequest, NoteUpdate, PrivateMessage, Snapshot, SocketAuth,
+    CharacterData, InitiativeState, LoginRequest, MessageRequest, NoteRequest, NoteUpdate, PrivateMessage,
+    Snapshot, SocketAuth,
 )
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -120,6 +121,9 @@ def load_database():
         })
     for note_id, note in snapshot.board.items():
         database.board.insert_one({"_id": note_id, **note.model_dump()})
+    for username, character in snapshot.characters.items():
+        database.characters.insert_one({"_id": username, **character.model_dump()})
+    database.initiative.insert_one({"_id": "state", **snapshot.initiative.model_dump()})
     save_database()
 
 
@@ -134,8 +138,14 @@ def save_database():
         entry["_id"]: {key: value for key, value in entry.items() if key != "_id"}
         for entry in database.board.find()
     }
+    characters = {
+        entry["_id"]: {key: value for key, value in entry.items() if key != "_id"}
+        for entry in database.characters.find()
+    }
+    initiative = database.initiative.find_one({"_id": "state"}, {"_id": 0}) or InitiativeState().model_dump()
     snapshot = Snapshot.model_validate(
-        {"history": messages, "revoked": revocations, "users": users(), "notes": notes, "board": board}
+        {"history": messages, "revoked": revocations, "users": users(), "notes": notes,
+         "board": board, "characters": characters, "initiative": initiative}
     )
     write_json(SNAPSHOT_FILE, snapshot.model_dump())
 
@@ -292,6 +302,131 @@ def validate_board_images(images):
         except (binascii.Error, UnidentifiedImageError, OSError, Image.DecompressionBombError,
                 Image.DecompressionBombWarning) as error:
             raise ValueError("Invalid or oversized image.") from error
+
+
+@app.route("/api/character", methods=["GET", "PUT"])
+@jwt_required()
+def character():
+    username = get_jwt_identity()
+    payload = get_jwt()
+    with state_lock:
+        account = database.users.find_one({"_id": username})
+        if is_revoked(payload["jti"]) or account is None:
+            return jsonify(status="error", message="Session expired. Log in again."), 401
+        if account["role"] != "player":
+            return jsonify(status="error", message="Only players can access their character."), 403
+        existing = database.characters.find_one({"_id": username})
+        if request.method == "GET":
+            data = {key: value for key, value in existing.items() if key != "_id"} if existing else CharacterData().model_dump()
+            response = jsonify(character=data)
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        try:
+            character_data = CharacterData.model_validate(request.get_json(silent=True))
+            if not character_data.name.strip():
+                raise ValueError("Enter a character name.")
+            if character_data.portrait:
+                if character_data.portrait.media_type == "image/gif":
+                    raise ValueError("Portrait must be PNG, JPEG or WebP.")
+                validate_board_images([character_data.portrait])
+        except ValidationError:
+            return jsonify(status="error", message="Invalid character data. Check fields and class URLs."), 400
+        except ValueError as error:
+            return jsonify(status="error", message=str(error)), 400
+        if character_data.revision != (existing["revision"] if existing else 0):
+            return jsonify(status="error", message="Character changed elsewhere. Reload before editing."), 409
+        character_data.revision += 1
+        database.characters.replace_one(
+            {"_id": username}, {"_id": username, **character_data.model_dump()}, upsert=True
+        )
+        try:
+            save_database()
+        except (OSError, ValueError, TypeError):
+            if existing is None:
+                database.characters.delete_one({"_id": username})
+            else:
+                database.characters.replace_one({"_id": username}, existing)
+            raise
+    return jsonify(status="success", character=character_data.model_dump())
+
+
+@app.get("/api/characters")
+@jwt_required()
+def player_characters():
+    username = get_jwt_identity()
+    payload = get_jwt()
+    with state_lock:
+        account = database.users.find_one({"_id": username})
+        if is_revoked(payload["jti"]) or account is None:
+            return jsonify(status="error", message="Session expired. Log in again."), 401
+        if username != "dm" or account["role"] != "dm":
+            return jsonify(status="error", message="Only the dm can view player characters."), 403
+        players = sorted(user["_id"] for user in database.users.find({"role": "player"}, {"_id": 1}))
+        entries = []
+        for player in players:
+            data = database.characters.find_one({"_id": player}, {"_id": 0})
+            entries.append({"username": player, "character": data})
+        response = jsonify(characters=entries)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+@app.route("/api/initiative", methods=["GET", "PUT"])
+@jwt_required()
+def initiative():
+    username = get_jwt_identity()
+    payload = get_jwt()
+    with state_lock:
+        account = database.users.find_one({"_id": username})
+        if is_revoked(payload["jti"]) or account is None:
+            return jsonify(status="error", message="Session expired. Log in again."), 401
+        is_dm = username == "dm" and account["role"] == "dm"
+        if not is_dm and account["role"] != "player":
+            return jsonify(status="error", message="Initiative is unavailable for this account."), 403
+        existing = database.initiative.find_one({"_id": "state"})
+        state = InitiativeState.model_validate(
+            {key: value for key, value in existing.items() if key != "_id"} if existing else {}
+        )
+        if request.method == "GET":
+            if is_dm:
+                data = state.model_dump()
+            else:
+                visible = [actor for actor in state.tracker.combatants if actor.visible]
+                data = {"tracker": {
+                    "combatants": [
+                        {"id": actor.id, "name": actor.name, "initiative": actor.initiative, "dead": actor.dead}
+                        for actor in visible
+                    ],
+                    "current_turn_id": state.tracker.current_turn_id
+                    if any(actor.id == state.tracker.current_turn_id for actor in visible) else None,
+                }}
+            response = jsonify(initiative=data)
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        if not is_dm:
+            return jsonify(status="error", message="Only the dm can edit initiative."), 403
+        try:
+            incoming = InitiativeState.model_validate(request.get_json(silent=True))
+        except ValidationError:
+            return jsonify(status="error", message="Invalid initiative data. Check names, numbers and hit points."), 400
+        if incoming.revision != state.revision:
+            return jsonify(status="error", message="Initiative changed elsewhere. Reload before saving."), 409
+        incoming.revision += 1
+        database.initiative.replace_one(
+            {"_id": "state"}, {"_id": "state", **incoming.model_dump()}, upsert=True
+        )
+        try:
+            save_database()
+        except (OSError, ValueError, TypeError):
+            if existing is None:
+                database.initiative.delete_one({"_id": "state"})
+            else:
+                database.initiative.replace_one({"_id": "state"}, existing)
+            raise
+        for sid, connection in connections.items():
+            if connection["exp"] > time.time() and not is_revoked(connection["jti"]):
+                socketio.emit("initiative_changed", to=sid)
+        return jsonify(status="success", initiative=incoming.model_dump())
 
 
 @app.route("/api/board", methods=["GET", "POST"])

@@ -11,6 +11,37 @@ Players also have Chat and Notes tabs. Players can create and edit multiple
 private Markdown notes. Switching tabs keeps unsaved edits; leaving or logging
 out warns about unsaved changes. An unread-chat indicator is not implemented yet.
 
+Players also have a Character tab. Each player can view and edit their own
+character name, race, gender, portrait, classes and subclass links, passive
+perception and insight, armor class, maximum HP, initiative, six ability scores,
+movement speeds in feet, description, background and story. Blank numeric
+fields mean unknown; no game rules or ability modifiers are calculated.
+Portraits support PNG, JPEG and WebP up to 2 MiB. Data is saved to this
+experiment's snapshot, not the Streamlit database; it is not automatically
+imported. The `dm` account can view every player's full saved sheet, including
+description, background and story, in its read-only Characters tab. Players
+without a saved character are listed too; use Reload character to refresh.
+Other players cannot access these sheets. Concurrent edits are rejected; copy the draft,
+cancel and reload before applying it again.
+
+Both roles have an Initiative tab. The `dm` can add combatants without
+statblocks, edit initiative and current/maximum hit points, mark them defeated
+or hidden, remove them, reorder by initiative and advance to the next living
+combatant. Changes to combatant fields require **Save combatant changes**;
+other actions save immediately. New combatants are visible by default. Players
+see only visible combatants, their names, initiative, defeat status and the
+current turn when that combatant is visible. The server never sends hit points,
+hidden combatants or saved encounters to players.
+
+The DM can save named encounter snapshots and load, overwrite or delete them.
+Snapshots include the order, turn, visibility and hit points; subsequent live
+changes do not alter a saved encounter until overwritten. Connected clients
+refresh after changes; use Reload initiative after a disconnect or failed
+refresh. Concurrent DM changes are rejected: copy any draft, reload and
+reapply it. The tracker and encounters are stored in the experiment snapshot,
+separately from Streamlit. Back up the snapshot before upgrading, since older
+experiment versions cannot read the new snapshot field.
+
 Both roles have a Board tab. The `dm` account can create and edit Markdown
 notes, choosing whether each is visible to players; new notes start hidden.
 The DM can attach up to five PNG, JPEG, GIF, or WebP images per board note,
@@ -33,7 +64,7 @@ The snapshot is upgraded when the backend starts; back it up before upgrading,
 because older backend versions cannot read the new personal-note format.
 Deletion is not implemented.
 
-**Experiment only:** messages, notes and images are not encrypted on the server. Tokens are
+**Experiment only:** messages, notes, character data and images are not encrypted on the server. Tokens are
 stored in browser session storage, where injected JavaScript can read them.
 There is no login rate limiting, account administration UI, or production
 server. An ngrok tunnel makes the login publicly reachable. Do not use
@@ -94,7 +125,7 @@ private chat. Messages from the old shared chat have no recipient and are not
 displayed in private conversations.
 
 The backend creates `backend/data/` on first use. Accounts, chat, personal notes,
-board notes, board attachments and token
+characters, initiative, saved encounters, board notes, board attachments and token
 revocations live in mongomock collections. Passwords are stored as salted,
 one-way scrypt hashes, not reversible encrypted passwords. `jwt.key` remains
 the separate signing secret.
@@ -112,7 +143,7 @@ restoring or editing data or running the account-management command.
 These local files are git-ignored; keep them private, back them up if needed,
 and never put them in the frontend directory. Messages, notes and snapshots are not
 encrypted. Deleting the signing key invalidates all tokens; deleting the
-snapshot loses saved accounts, messages, personal and board notes, and revocations, and may re-import stale legacy
+snapshot loses saved accounts, messages, personal and board notes, characters, initiative, encounters and revocations, and may re-import stale legacy
 data. An abrupt termination can bypass shutdown; the most recent successful
 per-change snapshot remains available. The user-management
 command also updates passwords, but changing a password does not invalidate

@@ -25,13 +25,19 @@ from flask_socketio import SocketIO, emit
 from jwt.exceptions import PyJWTError
 from pydantic import ValidationError
 from PIL import Image, UnidentifiedImageError
+from pymongo.errors import PyMongoError
 from werkzeug.security import check_password_hash
 
-from models import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app_support import bestiary
+from app_support.models import (
     MAX_IMAGE_BYTES, MAX_NOTE_LENGTH, MIN_PASSWORD_LENGTH, BoardImage, BoardNote, BoardNoteRequest, BoardNoteUpdate,
-    CharacterData, ChatReadRequest, InitiativeState, LoginRequest, MessageRequest, NoteRequest, NoteUpdate, PrivateMessage,
+    CharacterData, ChatReadRequest, InitiativeState, LocalCreature, LocalCreatureInput, LocalCreatureUpdate,
+    LoginRequest, MessageRequest, NoteRequest, NoteUpdate, PrivateMessage,
     Snapshot, SocketAuth,
 )
+from tab_views.statblock_renderer import render_creature
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 USERS_FILE = DATA_DIR / "users.json"
@@ -126,6 +132,8 @@ def load_database():
     database.initiative.insert_one({"_id": "state", **snapshot.initiative.model_dump()})
     for username, cursor in snapshot.chat_read.items():
         database.chat_read.insert_one({"_id": username, "cursor": cursor})
+    for creature_id, creature in snapshot.custom_creatures.items():
+        database.custom_creatures.insert_one({"_id": creature_id, **creature.model_dump()})
     save_database()
 
 
@@ -146,9 +154,14 @@ def save_database():
     }
     initiative = database.initiative.find_one({"_id": "state"}, {"_id": 0}) or InitiativeState().model_dump()
     chat_read = {entry["_id"]: entry["cursor"] for entry in database.chat_read.find()}
+    custom_creatures = {
+        entry["_id"]: {key: value for key, value in entry.items() if key != "_id"}
+        for entry in database.custom_creatures.find()
+    }
     snapshot = Snapshot.model_validate(
         {"history": messages, "revoked": revocations, "users": users(), "notes": notes,
-         "board": board, "characters": characters, "initiative": initiative, "chat_read": chat_read}
+         "board": board, "characters": characters, "initiative": initiative, "chat_read": chat_read,
+         "custom_creatures": custom_creatures}
     )
     write_json(SNAPSHOT_FILE, snapshot.model_dump())
 
@@ -394,6 +407,128 @@ def player_characters():
             data = database.characters.find_one({"_id": player}, {"_id": 0})
             entries.append({"username": player, "character": data})
         response = jsonify(characters=entries)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+@app.get("/api/bestiary")
+@app.get("/api/bestiary/creature")
+@jwt_required()
+def bestiary_read():
+    username = get_jwt_identity()
+    payload = get_jwt()
+    with state_lock:
+        account = database.users.find_one({"_id": username})
+        if is_revoked(payload["jti"]) or account is None:
+            return jsonify(status="error", message="Session expired. Log in again."), 401
+        if username != "dm" or account["role"] != "dm":
+            return jsonify(status="error", message="Only the dm can view the bestiary."), 403
+    slug = request.args.get("slug") if request.path.endswith("/creature") else None
+    if request.path.endswith("/creature") and (
+        not slug or len(slug) > 512 or "\x00" in slug
+    ):
+        return jsonify(status="error", message="Invalid creature identifier."), 400
+    try:
+        if slug is None:
+            result = {"creatures": [entry.model_dump() for entry in bestiary.load_index()]}
+        else:
+            loaded = bestiary.load_creature(slug)
+            if loaded is None:
+                result = None
+            else:
+                creature, initiative_bonus = loaded
+                result = {
+                    "display": render_creature(creature).model_dump(),
+                    "creature": creature.model_dump(include=set(LocalCreatureInput.model_fields) - {"initiative_bonus"}),
+                    "stored_initiative_bonus": initiative_bonus,
+                    "initiative_bonus": initiative_bonus if initiative_bonus is not None
+                    else (creature.dexterity - 10) // 2,
+                    "initiative_bonus_source": "initiative" if initiative_bonus is not None else "dexterity",
+                }
+    except bestiary.BestiaryConfigurationError as error:
+        return jsonify(status="error", message=str(error)), 503
+    except bestiary.BestiaryLimitError:
+        app.logger.error("Bestiary index exceeds the supported entry limit.")
+        return jsonify(status="error", message="Bestiary exceeds the 10,000-entry limit."), 503
+    except PyMongoError as error:
+        app.logger.error("Bestiary read failed (%s).", type(error).__name__)
+        return jsonify(status="error", message="Could not connect to the bestiary database. Check server configuration and logs."), 503
+    except (ValidationError, ValueError) as error:
+        app.logger.error("Invalid bestiary data (%s).", type(error).__name__)
+        return jsonify(status="error", message="Invalid bestiary data or configuration. Check server logs."), 500
+    with state_lock:
+        account = database.users.find_one({"_id": username})
+        if payload["exp"] <= time.time() or is_revoked(payload["jti"]) or account is None:
+            return jsonify(status="error", message="Session expired. Log in again."), 401
+        if username != "dm" or account["role"] != "dm":
+            return jsonify(status="error", message="Only the dm can view the bestiary."), 403
+    if result is None:
+        return jsonify(status="error", message="Creature not found."), 404
+    response = jsonify(result)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/api/custom-creatures", methods=["GET", "POST"])
+@app.route("/api/custom-creatures/<creature_id>", methods=["GET", "PUT"])
+@jwt_required()
+def custom_creatures(creature_id=None):
+    username = get_jwt_identity()
+    payload = get_jwt()
+    with state_lock:
+        account = database.users.find_one({"_id": username})
+        if is_revoked(payload["jti"]) or account is None:
+            return jsonify(status="error", message="Session expired. Log in again."), 401
+        if username != "dm" or account["role"] != "dm":
+            return jsonify(status="error", message="Only the dm can manage custom creatures."), 403
+        existing = database.custom_creatures.find_one({"_id": creature_id}) if creature_id else None
+        if creature_id and existing is None:
+            return jsonify(status="error", message="Custom creature not found."), 404
+        if request.method == "GET":
+            if creature_id:
+                creature = LocalCreature.model_validate({key: value for key, value in existing.items() if key != "_id"})
+                result = {"id": creature_id, "creature": creature.model_dump(),
+                          "display": render_creature(creature).model_dump()}
+            else:
+                result = {"creatures": sorted(
+                    ({"id": entry["_id"], "name": entry["name"], "type": entry["type"],
+                      "challenge_rating": entry["challenge_rating"]}
+                     for entry in database.custom_creatures.find()),
+                    key=lambda entry: (entry["name"].casefold(), entry["id"]),
+                )}
+            response = jsonify(result)
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        try:
+            incoming = (LocalCreatureUpdate if creature_id else LocalCreatureInput).model_validate(
+                request.get_json(silent=True)
+            )
+        except ValidationError as error:
+            issues = error.errors(include_url=False, include_input=False, include_context=False)
+            details = "; ".join(
+                f"{'.'.join(str(part) for part in issue['loc'])}: {issue['msg']}"
+                for issue in issues[:5]
+            )
+            return jsonify(status="error", message=f"Invalid creature data: {details}"), 400
+        if existing and incoming.revision != existing["revision"]:
+            return jsonify(status="error", message="Creature changed elsewhere. Copy your edits and reload."), 409
+        if not creature_id:
+            creature_id = f"local:{secrets.token_hex(16)}"
+        values = incoming.model_dump(exclude={"revision"})
+        creature = LocalCreature(**values, revision=existing["revision"] + 1 if existing else 1)
+        display = render_creature(creature).model_dump()
+        database.custom_creatures.replace_one(
+            {"_id": creature_id}, {"_id": creature_id, **creature.model_dump()}, upsert=True
+        )
+        try:
+            save_database()
+        except (OSError, ValueError, TypeError):
+            if existing is None:
+                database.custom_creatures.delete_one({"_id": creature_id})
+            else:
+                database.custom_creatures.replace_one({"_id": creature_id}, existing)
+            raise
+        response = jsonify(status="success", id=creature_id, creature=creature.model_dump(), display=display)
         response.headers["Cache-Control"] = "no-store"
         return response
 

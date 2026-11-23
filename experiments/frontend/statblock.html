@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="parchment">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Creature statblock - Campaign companion</title>
+  <link rel="icon" href="assets/app-icons/favicon.ico" sizes="any">
+  <script src="js/theme.js"></script>
+  <link rel="stylesheet" href="assets/styles/styles.css">
+  <link rel="stylesheet" href="assets/styles/theme-dark.css">
+</head>
+<body class="statblock-page">
+  <header class="page-header">
+    <img class="site-logo" src="assets/images/logo.jpeg" width="660" height="660" alt="Campaign companion logo">
+    <div class="theme-control">
+      <label for="theme-select">Theme</label>
+      <select id="theme-select">
+        <option value="parchment">Parchment</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+  </header>
+  <p id="theme-status" class="error" role="alert"></p>
+  <main class="main-content">
+    <h1>Creature statblock</h1>
+    <p id="statblock-status" role="status">Loading creature...</p>
+    <div id="statblock-detail"></div>
+  </main>
+  <script src="js/statblock-rendering.js"></script>
+  <script src="js/statblock-page.js"></script>
+</body>
+</html>

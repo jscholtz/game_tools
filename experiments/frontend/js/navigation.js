@@ -76,6 +76,8 @@
       boardEditor.hidden = username !== "dm" || role !== "dm";
       initiativeTab.hidden = role !== "player" && !(role === "dm" && username === "dm");
       initiativeDm.hidden = username !== "dm" || role !== "dm";
+      bestiaryTab.hidden = username !== "dm" || role !== "dm";
+      customCreaturesTab.hidden = username !== "dm" || role !== "dm";
       chatPanel.setAttribute("role", "tabpanel");
       chatPanel.setAttribute("aria-labelledby", "chat-tab");
       chatPanel.removeAttribute("aria-label");
@@ -98,6 +100,7 @@
         boardStatus.textContent = "Session ended. Copy unsaved board edits before logging in again.";
         characterStatus.textContent = "Session ended. Copy unsaved character edits before logging in again.";
         initiativeStatus.textContent = "Session ended. Copy unsaved initiative edits before logging in again.";
+        customStatus.textContent = "Session ended. Copy unsaved creature edits before logging in again.";
         return;
       }
       sessionVersion++;
@@ -155,6 +158,8 @@
       initiativePlayerList.replaceChildren();
       initiativeEncounters.replaceChildren();
       initiativeStatus.textContent = "";
+      resetBestiary();
+      resetCustomCreatures();
       document.getElementById("chat-view").hidden = true;
       document.getElementById("login-view").hidden = false;
       document.getElementById("login-error").textContent = message;
@@ -162,7 +167,7 @@
     }
 
     function selectTab(selected) {
-      for (const tab of [chatTab, notesTab, characterTab, boardTab, initiativeTab]) {
+      for (const tab of [chatTab, notesTab, characterTab, boardTab, initiativeTab, bestiaryTab, customCreaturesTab]) {
         const active = tab === selected;
         tab.setAttribute("aria-selected", String(active));
         tab.tabIndex = active ? 0 : -1;
@@ -172,23 +177,26 @@
       characterPanel.hidden = selected !== characterTab;
       boardPanel.hidden = selected !== boardTab;
       initiativePanel.hidden = selected !== initiativeTab;
+      bestiaryPanel.hidden = selected !== bestiaryTab;
+      customCreaturesPanel.hidden = selected !== customCreaturesTab;
       if (selected === characterTab && currentRole === "dm" && currentUser === "dm") loadCharacters();
       if (selected === initiativeTab && !initiativeDirty) loadInitiative();
+      if (selected === bestiaryTab && !bestiaryLoaded) loadBestiary();
+      if (selected === customCreaturesTab && !customListLoaded) loadCustomList();
       if (selected === chatTab) markVisibleChatRead();
     }
 
     playerTabs.addEventListener("click", (event) => {
       const tab = event.target.closest('[role="tab"]');
-      if ([chatTab, notesTab, characterTab, boardTab, initiativeTab].includes(tab)) selectTab(tab);
+      if ([chatTab, notesTab, characterTab, boardTab, initiativeTab, bestiaryTab, customCreaturesTab].includes(tab) && !tab.hidden) selectTab(tab);
     });
     playerTabs.addEventListener("keydown", (event) => {
       if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
-      const tabs = [chatTab, notesTab, characterTab, boardTab, initiativeTab].filter((tab) => !tab.hidden);
+      const tabs = [chatTab, notesTab, characterTab, boardTab, initiativeTab, bestiaryTab, customCreaturesTab].filter((tab) => !tab.hidden);
       const index = tabs.indexOf(document.activeElement);
       const selected = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs[tabs.length - 1] :
         tabs[(index + (event.key === "ArrowDown" ? 1 : -1) + tabs.length) % tabs.length];
       selectTab(selected);
       selected.focus();
     });
-

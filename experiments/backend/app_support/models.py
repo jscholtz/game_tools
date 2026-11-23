@@ -3,6 +3,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from tab_views.data_models import StatblockCreature
+
 MAX_MESSAGE_LENGTH = 1000
 MAX_NOTE_LENGTH = 100_000
 MAX_BOARD_IMAGES = 5
@@ -163,6 +165,8 @@ class InitiativeCombatant(BaseModel):
     max_hp: int = Field(ge=1, le=1000000)
     visible: bool = True
     dead: bool = False
+    bestiary_slug: str | None = Field(default=None, min_length=1, max_length=512)
+    custom_creature_id: str | None = Field(default=None, min_length=1, max_length=512)
 
     @model_validator(mode="after")
     def validate_combatant(self) -> Self:
@@ -170,6 +174,8 @@ class InitiativeCombatant(BaseModel):
             raise ValueError("Combatant name must not be blank.")
         if self.current_hp > self.max_hp:
             raise ValueError("Current hit points cannot exceed maximum hit points.")
+        if self.bestiary_slug and self.custom_creature_id:
+            raise ValueError("A combatant cannot link to two creatures.")
         return self
 
 
@@ -220,6 +226,39 @@ class InitiativeState(BaseModel):
         return self
 
 
+class LocalCreatureInput(StatblockCreature):
+    initiative_bonus: int | None = Field(default=None, ge=-10000, le=10000)
+    hit_points: int = Field(ge=1, le=1000000)
+    strength: int = Field(ge=1, le=1000)
+    dexterity: int = Field(ge=1, le=1000)
+    constitution: int = Field(ge=1, le=1000)
+    intelligence: int = Field(ge=1, le=1000)
+    wisdom: int = Field(ge=1, le=1000)
+    charisma: int = Field(ge=1, le=1000)
+
+    @field_validator("*")
+    @classmethod
+    def limit_text(cls, value):
+        if isinstance(value, str) and len(value) > 10000:
+            raise ValueError("Creature fields must not exceed 10,000 characters.")
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def limit_name(cls, value):
+        if len(value) > 200:
+            raise ValueError("Creature name must not exceed 200 characters.")
+        return value
+
+
+class LocalCreature(LocalCreatureInput):
+    revision: int = Field(ge=1)
+
+
+class LocalCreatureUpdate(LocalCreatureInput):
+    revision: int = Field(ge=1)
+
+
 class StoredMessage(BaseModel):
     model_config = ConfigDict(strict=True, extra="allow", hide_input_in_errors=True)
 
@@ -253,6 +292,7 @@ class Snapshot(BaseModel):
     characters: dict[str, CharacterData] = Field(default_factory=dict, repr=False)
     initiative: InitiativeState = Field(default_factory=InitiativeState, repr=False)
     chat_read: dict[str, int] = Field(default_factory=dict, repr=False)
+    custom_creatures: dict[str, LocalCreature] = Field(default_factory=dict, repr=False)
 
     @model_validator(mode="before")
     @classmethod

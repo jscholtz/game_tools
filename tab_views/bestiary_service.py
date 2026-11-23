@@ -54,6 +54,7 @@ def save_custom_creature(
     principal.require_dm()
     creature = CustomCreature.model_validate({
         **values,
+        "initiative_bonus": original.initiative_bonus if original else None,
         "slug": original.slug if original else f"custom:{uuid4().hex}",
         "revision": uuid4().hex,
     })

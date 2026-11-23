@@ -8,9 +8,14 @@ import re
 from html import escape
 from textwrap import wrap
 
+from markdown_it import MarkdownIt
+
 from ..data_models import BestiaryDisplay, StatblockCreature
 
 TWO_COLUMN_HEIGHT = 900
+_INLINE_MARKDOWN = MarkdownIt("commonmark", {"html": False, "breaks": True}).disable(
+    ["link", "image", "autolink"]
+)
 
 _STYLE = """
 body { margin: 0; }
@@ -90,17 +95,24 @@ def _property_line(label: str, value: str) -> str:
     )
 
 
+def _inline_markdown(value: str) -> str:
+    return _INLINE_MARKDOWN.renderInline(value).replace("<br />\n", "<br>")
+
+
 def _section(label: str, value: str) -> str:
     if not value.strip():
         return ""
     blocks = []
     for paragraph in re.split(r"\n\s*\n", value.strip()):
         # A short first sentence is a conventional statblock ability name.
-        match = re.match(r"^([^\n.]{1,80}\.)\s+(.+)$", paragraph, re.DOTALL)
+        match = re.match(r"^([^*\n._]{1,80}\.)[ \t]+(.+)$", paragraph, re.DOTALL)
         if match:
-            content = f"<strong>{escape(match.group(1))}</strong> {escape(match.group(2))}"
+            content = (
+                f"<strong>{escape(match.group(1))}</strong> "
+                f"{_inline_markdown(match.group(2))}"
+            )
         else:
-            content = escape(paragraph)
+            content = _inline_markdown(paragraph)
         blocks.append(f'<div class="property-block">{content}</div>')
     return f"<h3>{escape(label)}</h3>{''.join(blocks)}"
 

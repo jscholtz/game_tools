@@ -20,7 +20,7 @@
     }
 
     async function loadInitiative() {
-      if (initiativeSaving || initiativeDirty) return;
+      if (initiativeSaving || initiativeDirty) return false;
       const version = sessionVersion;
       const loadVersion = ++initiativeLoadVersion;
       try {
@@ -29,14 +29,16 @@
         });
         if (!response.ok) throw new Error(`Loading initiative failed (${response.status}).`);
         const data = await response.json();
-        if (version !== sessionVersion || loadVersion !== initiativeLoadVersion || initiativeDirty || initiativeSaving) return;
+        if (version !== sessionVersion || loadVersion !== initiativeLoadVersion || initiativeDirty || initiativeSaving) return false;
         initiativeData = data.initiative;
         renderInitiative();
         initiativeStatus.textContent = "";
+        return true;
       } catch (error) {
-        if (version !== sessionVersion || loadVersion !== initiativeLoadVersion) return;
+        if (version !== sessionVersion || loadVersion !== initiativeLoadVersion) return false;
         console.error("Could not load initiative:", error);
         initiativeStatus.textContent = "Could not load initiative. Use Reload initiative to retry.";
+        return false;
       }
     }
 
@@ -150,6 +152,27 @@
             if (next.tracker.current_turn_id === actor.id) next.tracker.current_turn_id = null;
             saveInitiative(next);
           }, "remove"));
+          if (actor.bestiary_slug || actor.custom_creature_id) {
+            const actions = document.createElement("div");
+            actions.className = "initiative-bestiary-actions";
+            const view = document.createElement("button");
+            view.type = "button";
+            const localCreature = Boolean(actor.custom_creature_id);
+            setButtonLabel(view, localCreature ? "View custom creature" : "View in bestiary", "bestiary");
+            view.addEventListener("click", () => localCreature
+              ? openCustomCreature(actor.custom_creature_id) : openBestiaryCreature(actor.bestiary_slug));
+            const statblock = document.createElement("a");
+            const statblockUrl = new URL("statblock.html", document.baseURI);
+            statblockUrl.searchParams.set(localCreature ? "custom" : "slug",
+              localCreature ? actor.custom_creature_id : actor.bestiary_slug);
+            statblock.href = statblockUrl.href;
+            statblock.target = "_blank";
+            statblock.rel = "opener";
+            statblock.className = "initiative-statblock-link";
+            setButtonLabel(statblock, "Open statblock in new tab", "bestiary");
+            actions.append(view, statblock);
+            group.append(actions);
+          }
           initiativeEditList.append(group);
         }
         for (const encounter of initiativeData.encounters) {
@@ -218,14 +241,21 @@
       });
       if (await saveInitiative(next)) initiativeAdd.reset();
     });
-    document.getElementById("initiative-next").addEventListener("click", () => {
+    document.getElementById("initiative-next").addEventListener("click", async () => {
       if (!initiativeData || initiativeDirty || initiativeSaving) return;
       const next = structuredClone(initiativeData);
       const living = next.tracker.combatants.filter((actor) => !actor.dead);
       if (!living.length) { initiativeStatus.textContent = "No living combatants."; return; }
       const index = living.findIndex((actor) => actor.id === next.tracker.current_turn_id);
-      next.tracker.current_turn_id = living[(index + 1) % living.length].id;
-      saveInitiative(next);
+      const nextIndex = (index + 1) % living.length;
+      const newRound = index === -1 || nextIndex === 0;
+      const crossesThreshold = living.some((actor) => actor.initiative > 35) &&
+        living.some((actor) => actor.initiative <= 35);
+      const reachedThirtyFive = !newRound && living[index].initiative > 35 && living[nextIndex].initiative <= 35;
+      next.tracker.current_turn_id = living[nextIndex].id;
+      if (await saveInitiative(next) && ((newRound && !crossesThreshold) || reachedThirtyFive)) {
+        alert("Check the music.");
+      }
     });
     document.getElementById("initiative-sort").addEventListener("click", () => {
       if (!initiativeData || initiativeDirty || initiativeSaving) return;
@@ -247,4 +277,3 @@
       initiativeDirty = false;
       loadInitiative();
     });
-

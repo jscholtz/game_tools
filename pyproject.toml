@@ -18,5 +18,6 @@ dependencies = [
     "redis>=5.0.0",
     "socketio>=0.2.1",
     "streamlit>=1.46.0",
+    "supabase>=2.34.1",
     "typesafe-sdk>=0.7.5",
 ]

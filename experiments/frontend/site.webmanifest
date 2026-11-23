@@ -1,1 +1,1 @@
-{"name":"","short_name":"","icons":[{"src":"/android-chrome-192x192.png","sizes":"192x192","type":"image/png"},{"src":"/android-chrome-512x512.png","sizes":"512x512","type":"image/png"}],"theme_color":"#ffffff","background_color":"#ffffff","display":"standalone"}
+{"name":"Campaign companion","short_name":"Campaign","icons":[{"src":"assets/app-icons/icon-192.png","sizes":"192x192","type":"image/png"},{"src":"assets/app-icons/icon-512.png","sizes":"512x512","type":"image/png"}],"theme_color":"#eee2cb","background_color":"#eee2cb","display":"standalone"}

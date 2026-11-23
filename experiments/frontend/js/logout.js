@@ -1,9 +1,10 @@
     document.getElementById("logout-button").addEventListener("click", async () => {
-      if (notesSaving || boardSaving || characterSaving || initiativeSaving) {
+      if (notesSaving || boardSaving || characterSaving || initiativeSaving || customSaving || customAdding) {
         notesStatus.textContent = "Wait for the current save to finish before logging out.";
         boardStatus.textContent = "Wait for the current save to finish before logging out.";
         characterStatus.textContent = "Wait for the current save to finish before logging out.";
         initiativeStatus.textContent = "Wait for the current save to finish before logging out.";
+        customStatus.textContent = "Wait for the current save to finish before logging out.";
         return;
       }
       if (hasUnsavedChanges() && !confirm("Discard unsaved changes and log out?")) return;
@@ -65,4 +66,3 @@
         logoutButton.disabled = false;
       }
     });
-

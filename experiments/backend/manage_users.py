@@ -4,7 +4,7 @@ import getpass
 from werkzeug.security import generate_password_hash
 
 from app import database, load_database, save_database
-from models import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
+from app_support.models import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 
 
 def main():

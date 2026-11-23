@@ -6,6 +6,7 @@
 
     function hasUnsavedChanges() {
       return (notesLoaded && (notesSaving || notesDirty())) ||
+        (!customForm.hidden && (customSaving || customDirty())) ||
         (!boardEditor.hidden && (boardSaving || boardDirty())) ||
         (!characterForm.hidden && (characterSaving || characterDirty())) ||
         (!initiativeDm.hidden && (initiativeSaving || initiativeDirty ||
@@ -213,4 +214,3 @@
         }
       }
     });
-

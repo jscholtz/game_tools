@@ -82,6 +82,7 @@ class StatblockCreature(BaseModel):
 class CustomCreature(StatblockCreature):
     slug: str
     revision: str
+    initiative_bonus: int | None = None
 
     def as_bestiary_entry(self) -> BestiaryEntry:
         return BestiaryEntry(
@@ -115,6 +116,7 @@ class StandardCreature(BaseModel):
     speed: dict[str, int | bool | str]
     strength: int
     dexterity: int
+    initiative_bonus: int | None = None
     constitution: int
     intelligence: int
     wisdom: int

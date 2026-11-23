@@ -1,23 +1,26 @@
 <!doctype html>
 <html lang="en" data-theme="parchment">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Split chat experiment</title>
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
-  <link rel="icon" href="favicon.ico" sizes="any">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-  <script src="theme.js"></script>
+  <title>Campaign companion</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/app-icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/app-icons/favicon-16.png">
+  <link rel="icon" href="assets/app-icons/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icons/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <script src="js/theme.js"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js" defer></script>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="theme-dark.css">
+  <link rel="stylesheet" href="assets/styles/styles.css">
+  <link rel="stylesheet" href="assets/styles/theme-dark.css">
 </head>
+
 <body>
   <header class="page-header">
-    <h1>Split chat experiment</h1>
+    <img class="site-logo" src="assets/images/logo.jpeg" width="660" height="660" alt="Campaign companion logo">
     <div class="theme-control">
       <label for="theme-select">Theme</label>
       <select id="theme-select">
@@ -27,11 +30,8 @@
     </div>
   </header>
   <p id="theme-status" class="error" role="alert"></p>
-  <p class="warning">Experiment only: messages and notes are stored unencrypted on the server. Do not use for sensitive information.</p>
-
   <section id="login-view">
     <h2>Login</h2>
-    <p>Create local accounts using the backend setup instructions.</p>
     <form id="login-form">
       <label for="backend-url">Backend URL</label>
       <input id="backend-url" type="url" value="http://127.0.0.1:5000" required>
@@ -46,120 +46,241 @@
 
   <section id="chat-view" hidden>
     <aside class="sidebar">
-    <h2>Signed in: <span id="current-user"></span></h2>
-    <div id="player-tabs" role="tablist" aria-label="Sections" aria-orientation="vertical" hidden>
-      <button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel">Chat <span id="chat-unread" class="unread-badge" aria-hidden="true" hidden></span></button>
-      <button id="notes-tab" type="button" role="tab" aria-selected="false" aria-controls="notes-panel" tabindex="-1">Notes</button>
-      <button id="character-tab" type="button" role="tab" aria-selected="false" aria-controls="character-panel" tabindex="-1">Character</button>
-      <button id="board-tab" type="button" role="tab" aria-selected="false" aria-controls="board-panel" tabindex="-1">Board</button>
-      <button id="initiative-tab" type="button" role="tab" aria-selected="false" aria-controls="initiative-panel" tabindex="-1">Initiative</button>
-    </div>
-    <button id="logout-button" type="button">Log out</button>
+      <h2>Signed in: <span id="current-user"></span></h2>
+      <div id="player-tabs" role="tablist" aria-label="Sections" aria-orientation="vertical" hidden>
+        <button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat-panel">Chat <span
+            id="chat-unread" class="unread-badge" aria-hidden="true" hidden></span></button>
+        <button id="notes-tab" type="button" role="tab" aria-selected="false" aria-controls="notes-panel"
+          tabindex="-1">Notes</button>
+        <button id="character-tab" type="button" role="tab" aria-selected="false" aria-controls="character-panel"
+          tabindex="-1">Character</button>
+        <button id="board-tab" type="button" role="tab" aria-selected="false" aria-controls="board-panel"
+          tabindex="-1">Board</button>
+        <button id="initiative-tab" type="button" role="tab" aria-selected="false" aria-controls="initiative-panel"
+          tabindex="-1">Initiative</button>
+        <button id="bestiary-tab" type="button" role="tab" aria-selected="false" aria-controls="bestiary-panel"
+          tabindex="-1" hidden>Bestiary</button>
+        <button id="custom-creatures-tab" type="button" role="tab" aria-selected="false"
+          aria-controls="custom-creatures-panel" tabindex="-1" hidden>Custom creatures</button>
+      </div>
+      <button id="logout-button" type="button">Log out</button>
     </aside>
     <main class="main-content">
-    <div id="chat-panel" role="region" aria-label="Chat">
-      <p id="connection-status" role="status">Connecting...</p>
-      <div id="conversations"></div>
-      <p id="message-error" class="error" role="alert"></p>
-    </div>
-    <div id="notes-panel" role="tabpanel" aria-labelledby="notes-tab" hidden>
-      <h3>Personal notes</h3>
-      <div class="notes-layout">
-      <div>
-      <h4>Note editor</h4>
-      <form id="notes-form">
-        <label for="notes-header">Header</label>
-        <input id="notes-header" maxlength="200" required disabled>
-        <label for="notes-input">Personal note (Markdown)</label>
-        <textarea id="notes-input" rows="10" maxlength="100000" required disabled></textarea>
-        <button id="notes-save" type="submit" disabled>Save note</button>
-        <button id="notes-cancel" type="button" disabled>Clear editor</button>
-      </form>
+      <div id="chat-panel" role="region" aria-label="Chat">
+        <p id="connection-status" role="status">Connecting...</p>
+        <div id="conversations"></div>
+        <p id="message-error" class="error" role="alert"></p>
       </div>
-      <div>
-      <h4>Saved notes</h4>
-      <button id="notes-retry" type="button">Refresh notes</button>
-      <p id="notes-status" role="status"></p>
-      <div id="notes-list"></div>
-      </div>
-      </div>
-    </div>
-    <div id="character-panel" role="tabpanel" aria-labelledby="character-tab" hidden>
-      <h3>Character</h3>
-      <p id="character-status" role="status"></p>
-      <div id="character-display" class="character-display"></div>
-      <div id="dm-character-list"></div>
-      <button id="character-edit" type="button" disabled>Edit character</button>
-      <button id="character-reload" type="button">Reload character</button>
-      <form id="character-form" hidden>
-        <div id="character-fields"></div>
-        <h4>Classes</h4>
-        <div id="character-classes"></div>
-        <button id="character-add-class" type="button">Add class</button>
-        <label for="character-portrait">Character portrait (PNG, JPEG or WebP; maximum 2 MiB)</label>
-        <input id="character-portrait" type="file" accept="image/png,image/jpeg,image/webp">
-        <label><input id="character-remove-portrait" type="checkbox"> Remove current portrait</label>
-        <div id="character-text-fields"></div>
-        <button id="character-save" type="submit">Save character</button>
-        <button id="character-cancel" type="button">Cancel</button>
-      </form>
-    </div>
-    <div id="board-panel" role="tabpanel" aria-labelledby="board-tab" hidden>
-      <h3>Public board</h3>
-      <p>Only published notes are visible to players.</p>
-      <div id="board-editor" hidden>
-        <form id="board-form">
-          <label for="board-header">Header</label>
-          <input id="board-header" maxlength="200" required>
-          <label for="board-input">Board note (Markdown)</label>
-          <textarea id="board-input" rows="10" maxlength="100000" required></textarea>
-          <div id="board-existing-images"></div>
-          <label for="board-images">Add images (PNG, JPEG, GIF, WebP; up to 5 images, 2 MiB each)</label>
-          <input id="board-images" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple>
-          <label><input id="board-visible" type="checkbox"> Visible to players</label>
-          <button id="board-save" type="submit">Save note</button>
-          <button id="board-cancel" type="button">Clear editor</button>
-        </form>
-      </div>
-      <button id="board-refresh" type="button">Refresh board</button>
-      <p id="board-status" role="status"></p>
-      <div id="board-list"></div>
-    </div>
-    <div id="initiative-panel" role="tabpanel" aria-labelledby="initiative-tab" hidden>
-      <h3>Initiative</h3>
-      <p id="initiative-status" role="status"></p>
-      <button id="initiative-refresh" type="button">Reload initiative</button>
-      <div id="initiative-dm" hidden>
-        <form id="initiative-add">
-          <label for="initiative-name">Character or monster
-            <input id="initiative-name" maxlength="200" required></label>
-          <label for="initiative-value">Initiative
-            <input id="initiative-value" type="number" min="-10000" max="10000" step="1" value="0" required></label>
-          <label for="initiative-hp">Maximum HP
-            <input id="initiative-hp" type="number" min="1" max="1000000" step="1" value="10" required></label>
-          <button type="submit" data-initiative-action>Add combatant</button>
-        </form>
-        <div class="initiative-toolbar">
-          <button id="initiative-next" type="button" data-initiative-action>Next turn</button>
-          <button id="initiative-sort" type="button" data-initiative-action>Reorder by initiative</button>
+      <div id="notes-panel" role="tabpanel" aria-labelledby="notes-tab" hidden>
+        <h3>Personal notes</h3>
+        <div class="notes-layout">
+          <div>
+            <h4>Note editor</h4>
+            <form id="notes-form">
+              <label for="notes-header">Header</label>
+              <input id="notes-header" maxlength="200" required disabled>
+              <label for="notes-input">Personal note (Markdown)</label>
+              <textarea id="notes-input" rows="10" maxlength="100000" required disabled></textarea>
+              <button id="notes-save" type="submit" disabled>Save note</button>
+              <button id="notes-cancel" type="button" disabled>Clear editor</button>
+            </form>
+          </div>
+          <div>
+            <h4>Saved notes</h4>
+            <button id="notes-retry" type="button">Refresh notes</button>
+            <p id="notes-status" role="status"></p>
+            <div id="notes-list"></div>
+          </div>
         </div>
-        <form id="initiative-edit">
-          <fieldset id="initiative-fields"><legend>Combatants</legend><div id="initiative-edit-list"></div></fieldset>
-          <button id="initiative-save" type="submit">Save combatant changes</button>
-        </form>
-        <details class="initiative-encounter-section">
-          <summary>Saved encounters</summary>
-          <p>Snapshots do not change until overwritten.</p>
-          <form id="initiative-encounter-form">
-            <label for="initiative-encounter-name">Encounter name
-              <input id="initiative-encounter-name" maxlength="200" required></label>
-            <button type="submit" data-initiative-action>Save new encounter</button>
-          </form>
-          <div id="initiative-encounters"></div>
-        </details>
       </div>
-      <div id="initiative-player-list"></div>
-    </div>
+      <div id="character-panel" role="tabpanel" aria-labelledby="character-tab" hidden>
+        <h3>Character</h3>
+        <p id="character-status" role="status"></p>
+        <div id="character-display" class="character-display"></div>
+        <div id="dm-character-list"></div>
+        <button id="character-edit" type="button" disabled>Edit character</button>
+        <button id="character-reload" type="button">Reload character</button>
+        <form id="character-form" hidden>
+          <div id="character-fields"></div>
+          <h4>Classes</h4>
+          <div id="character-classes"></div>
+          <button id="character-add-class" type="button">Add class</button>
+          <label for="character-portrait">Character portrait (PNG, JPEG or WebP; maximum 2 MiB)</label>
+          <input id="character-portrait" type="file" accept="image/png,image/jpeg,image/webp">
+          <label><input id="character-remove-portrait" type="checkbox"> Remove current portrait</label>
+          <div id="character-text-fields"></div>
+          <button id="character-save" type="submit">Save character</button>
+          <button id="character-cancel" type="button">Cancel</button>
+        </form>
+      </div>
+      <div id="board-panel" role="tabpanel" aria-labelledby="board-tab" hidden>
+        <h3>Public board</h3>
+        <p>Only published notes are visible to players.</p>
+        <div id="board-editor" hidden>
+          <form id="board-form">
+            <label for="board-header">Header</label>
+            <input id="board-header" maxlength="200" required>
+            <label for="board-input">Board note (Markdown)</label>
+            <textarea id="board-input" rows="10" maxlength="100000" required></textarea>
+            <div id="board-existing-images"></div>
+            <label for="board-images">Add images (PNG, JPEG, GIF, WebP; up to 5 images, 2 MiB each)</label>
+            <input id="board-images" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple>
+            <label><input id="board-visible" type="checkbox"> Visible to players</label>
+            <button id="board-save" type="submit">Save note</button>
+            <button id="board-cancel" type="button">Clear editor</button>
+          </form>
+        </div>
+        <button id="board-refresh" type="button">Refresh board</button>
+        <p id="board-status" role="status"></p>
+        <div id="board-list"></div>
+      </div>
+      <div id="initiative-panel" role="tabpanel" aria-labelledby="initiative-tab" hidden>
+        <h3>Initiative</h3>
+        <p id="initiative-status" role="status"></p>
+        <button id="initiative-refresh" type="button">Reload initiative</button>
+        <div id="initiative-dm" hidden>
+          <form id="initiative-add">
+            <label for="initiative-name">Character or monster
+              <input id="initiative-name" maxlength="200" required></label>
+            <label for="initiative-value">Initiative
+              <input id="initiative-value" type="number" min="-10000" max="10000" step="1" value="0" required></label>
+            <label for="initiative-hp">Maximum HP
+              <input id="initiative-hp" type="number" min="1" max="1000000" step="1" value="10" required></label>
+            <button type="submit" data-initiative-action>Add combatant</button>
+          </form>
+          <div class="initiative-toolbar">
+            <button id="initiative-next" type="button" data-initiative-action>Next turn</button>
+            <button id="initiative-sort" type="button" data-initiative-action>Reorder by initiative</button>
+          </div>
+          <form id="initiative-edit">
+            <fieldset id="initiative-fields">
+              <legend>Combatants</legend>
+              <div id="initiative-edit-list"></div>
+            </fieldset>
+            <button id="initiative-save" type="submit">Save combatant changes</button>
+          </form>
+          <details class="initiative-encounter-section">
+            <summary>Saved encounters</summary>
+            <p>Snapshots do not change until overwritten.</p>
+            <form id="initiative-encounter-form">
+              <label for="initiative-encounter-name">Encounter name
+                <input id="initiative-encounter-name" maxlength="200" required></label>
+              <button type="submit" data-initiative-action>Save new encounter</button>
+            </form>
+            <div id="initiative-encounters"></div>
+          </details>
+        </div>
+        <div id="initiative-player-list"></div>
+      </div>
+      <div id="bestiary-panel" role="tabpanel" aria-labelledby="bestiary-tab" hidden>
+        <h3>Bestiary</h3>
+        <button id="bestiary-refresh" type="button">Refresh bestiary</button>
+        <p id="bestiary-status" role="status"></p>
+        <div class="bestiary-filters">
+          <div>
+            <label for="bestiary-name">Search by name</label>
+            <input id="bestiary-name" type="search" maxlength="200">
+          </div>
+          <div><label for="bestiary-type">Type</label><select id="bestiary-type"></select></div>
+          <div><label for="bestiary-rating">Challenge rating</label><select id="bestiary-rating"></select></div>
+          <div><label for="bestiary-size">Size</label><select id="bestiary-size"></select></div>
+          <div><label for="bestiary-source">Source</label><select id="bestiary-source"></select></div>
+        </div>
+        <div class="bestiary-layout">
+          <section aria-labelledby="bestiary-results-heading">
+            <h4 id="bestiary-results-heading">Creatures</h4>
+            <p id="bestiary-count" role="status"></p>
+            <div class="bestiary-results-scroll" role="region" aria-label="Creature results" tabindex="0">
+              <table class="bestiary-results">
+                <colgroup>
+                  <col class="bestiary-col-name"><col class="bestiary-col-cr"><col class="bestiary-col-type">
+                  <col class="bestiary-col-size"><col class="bestiary-col-source">
+                </colgroup>
+                <thead><tr>
+                  <th scope="col">Name</th><th scope="col">CR</th><th scope="col">Type</th>
+                  <th scope="col">Size</th><th scope="col">Source</th>
+                </tr></thead>
+                <tbody id="bestiary-results"></tbody>
+              </table>
+            </div>
+          </section>
+          <section aria-labelledby="bestiary-detail-heading">
+            <h4 id="bestiary-detail-heading">Statblock</h4>
+            <p id="bestiary-detail-status" role="status">Select a creature to see its statblock.</p>
+            <button id="bestiary-copy" type="button" hidden>Copy to custom creatures</button>
+            <form id="bestiary-add" hidden>
+              <div class="bestiary-add-heading">Add to current fight</div>
+              <div class="bestiary-add-fields">
+                <label for="bestiary-combatant-name">Name
+                  <input id="bestiary-combatant-name" maxlength="200" required></label>
+                <label for="bestiary-initiative">Initiative
+                  <input id="bestiary-initiative" type="number" min="-10000" max="10000" step="1"
+                    aria-describedby="bestiary-initiative-roll" required disabled></label>
+              </div>
+              <div class="bestiary-add-summary">
+                <p id="bestiary-initiative-roll" role="status"></p>
+                <p id="bestiary-hit-points"></p>
+              </div>
+              <div class="bestiary-add-actions">
+                <button id="bestiary-add-submit" type="submit" disabled>Add to initiative</button>
+                <button id="bestiary-reroll" type="button" disabled>Reroll initiative</button>
+              </div>
+              <p id="bestiary-add-status" role="status"></p>
+            </form>
+            <div id="bestiary-detail"></div>
+          </section>
+        </div>
+      </div>
+      <div id="custom-creatures-panel" role="tabpanel" aria-labelledby="custom-creatures-tab" hidden>
+        <h3>Custom creatures</h3>
+        <div class="custom-layout">
+          <aside class="custom-library" aria-labelledby="custom-library-heading">
+            <h4 id="custom-library-heading">Your creatures</h4>
+            <button id="custom-new" type="button">New creature</button>
+            <button id="custom-refresh" type="button">Refresh list</button>
+            <label for="custom-search">Search</label>
+            <input id="custom-search" type="search" maxlength="200">
+            <p id="custom-list-status" role="status"></p>
+            <div id="custom-list"></div>
+          </aside>
+          <section class="custom-workspace">
+            <p id="custom-status" role="status">Select a creature or create a new one.</p>
+            <form id="custom-form" hidden>
+              <div class="custom-editor-header">
+                <h4 id="custom-editor-heading">Creature editor</h4>
+                <div class="custom-editor-actions">
+                  <button type="submit" id="custom-save">Save creature</button>
+                  <button type="button" id="custom-cancel">Cancel</button>
+                </div>
+              </div>
+              <div id="custom-fields"></div>
+              <button type="submit">Save creature</button>
+            </form>
+            <div id="custom-saved-actions" hidden>
+              <div class="custom-view-header">
+                <h4>Saved statblock</h4>
+                <button id="custom-edit" type="button">Edit creature</button>
+              </div>
+              <div class="custom-view-layout">
+                <div id="custom-preview"></div>
+                <form id="custom-add" class="custom-add">
+                  <strong>Add to current fight</strong>
+                  <div class="bestiary-add-fields">
+                    <label for="custom-combatant-name">Name<input id="custom-combatant-name" maxlength="200" required></label>
+                    <label for="custom-initiative">Initiative<input id="custom-initiative" type="number" min="-10000" max="10000" step="1" required></label>
+                  </div>
+                  <p id="custom-roll" role="status"></p>
+                  <div class="custom-add-buttons">
+                    <button type="submit">Add to initiative</button>
+                    <button id="custom-reroll" type="button">Reroll</button>
+                  </div>
+                  <p id="custom-add-status" role="status"></p>
+                </form>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
     </main>
   </section>
 
@@ -173,6 +294,10 @@
   <script src="js/session.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/logout.js"></script>
+  <script src="js/statblock-rendering.js"></script>
+  <script src="js/bestiary.js"></script>
+  <script src="js/custom-creatures.js"></script>
   <script src="js/app.js"></script>
 </body>
+
 </html>

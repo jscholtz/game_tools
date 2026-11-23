@@ -3,8 +3,9 @@
 This is a disposable local proof of concept, separate from the Streamlit app.
 The static frontend runs in the browser; the Flask-SocketIO backend checks local
 credentials and routes private messages between each player and the `dm` account.
-It uses an in-memory mongomock database, not a MongoDB server, Redis, campaign
-data, or existing campaign accounts. The last 20 messages per conversation and
+It uses an in-memory mongomock database for experiment data, not Redis or
+existing campaign accounts. The optional read-only bestiary uses MongoDB
+separately. The last 20 messages per conversation and
 any older unread incoming messages are shown on reconnect. The DM sees one chat window per player account (four for
 four players); each player sees only their own conversation with the DM.
 Players also have Chat and Notes tabs. Players can create and edit multiple
@@ -15,15 +16,23 @@ The Theme selector offers Parchment (default) and Dark. The choice is saved
 in browser local storage, separately for each browser and device, and applies
 before login. If storage is unavailable, the selector reports that the choice
 cannot be saved.
-Shared layout and default color tokens live in `frontend/styles.css`; Dark
-overrides and its panel treatment live in `frontend/theme-dark.css`. To add a
+Navigation and primary buttons use the locally hosted Cinzel font; its license
+is included in `frontend/assets/fonts/CINZEL-OFL.txt`.
+Shared layout and default color tokens live in `frontend/assets/styles/styles.css`; Dark
+overrides and its panel treatment live in `frontend/assets/styles/theme-dark.css`. To add a
 theme, provide its token and decorative overrides, link its stylesheet, and
-add its value to both the selector and the allowlist in `frontend/theme.js`.
+add its value to both the selector and the allowlist in `frontend/js/theme.js`.
 
 The page markup is in `frontend/index.html`; feature scripts are in
 `frontend/js/`. They run as ordered classic scripts and share the existing
 page-level state: keep their order intact, with `app.js` last so session
 restoration starts after the feature handlers are registered.
+The standalone statblock page remains at `frontend/statblock.html`. Images,
+icons, fonts and styles are grouped under `frontend/assets/`; legacy root
+favicon files remain available at their original URLs. Backend entry points
+and data remain in `backend/`; supporting models and MongoDB bestiary access
+are in `backend/app_support/`. The snapshot and credentials remain in
+`backend/data/` and are not moved by this reorganization.
 
 The Chat tab shows an account-wide unread count for incoming messages. It
 survives reconnects and restarts, including messages received while offline.
@@ -55,6 +64,11 @@ other actions save immediately. New combatants are visible by default. Players
 see only visible combatants, their names, initiative, defeat status and the
 current turn when that combatant is visible. The server never sends hit points,
 hidden combatants or saved encounters to players.
+When the DM advances the turn, a music reminder appears once per round at
+initiative 35, including the first round. If all combatants are on the same
+side of 35, it appears when the round starts instead. Use **Reorder by
+initiative** to keep turn order aligned with initiative values. The reminder
+appears only after a successful turn save.
 
 The DM can save named encounter snapshots and load, overwrite or delete them.
 These controls are under the expandable **Saved encounters** section.
@@ -65,6 +79,49 @@ refresh. Concurrent DM changes are rejected: copy any draft, reload and
 reapply it. The tracker and encounters are stored in the experiment snapshot,
 separately from Streamlit. Back up the snapshot before upgrading, since older
 experiment versions cannot read the new snapshot field.
+
+The `dm` account has a read-only Bestiary tab with standard and custom
+creatures from the Streamlit MongoDB collections. Filter by name, type,
+challenge rating, size and source, then select a row in the results table to
+see its statblock. Creature names in the table are keyboard-accessible buttons.
+Source titles are abbreviated in the table; hover for the full title or use
+the Source filter, which lists full titles.
+Statblocks use the same renderer as Streamlit and retain its parchment styling
+in both themes. Trait, action and note text supports inline Markdown emphasis;
+raw HTML is displayed as text. Selecting a creature rolls 1d20 plus its `initiative_bonus`,
+or its Dexterity modifier if no bonus is stored. The roll is editable, can be
+rerolled, and is rolled again after each successful addition. Select a creature
+and add it to the current fight with its listed starting hit points. Additions are visible
+to players by default, do not reorder the tracker, and preserve the current
+turn. Save or reload unsaved initiative edits before adding. Bestiary-linked
+combatants have a DM-only **View in bestiary** button, including in restored
+encounters, and an **Open statblock in new tab** link for a read-only page.
+The new tab copies the current browser session and retrieves the statblock from
+the DM-only endpoint; it can be refreshed while that session remains valid.
+If a creature is removed from MongoDB, its combatant remains.
+Refresh reloads the index; creature details load on selection. Creature editing
+is not available here. Indexes above 10,000 combined entries are rejected
+explicitly rather than silently truncated.
+
+Bestiary links are stored in the experiment snapshot. Back up the snapshot
+before upgrading: older versions of the experiment cannot read these links.
+
+The DM's **Custom creatures** tab stores a separate creature library in the
+experiment's mock database and snapshot, not in the Streamlit MongoDB custom
+bestiary. Create a new creature or select **Copy to custom creatures** on a
+bestiary statblock; the copy is an unsaved draft until saved. Selecting a saved
+creature shows its statblock and fight controls; use **Edit creature** to open
+the editor. The editor covers statblock fields and an optional initiative bonus.
+Separate action paragraphs with blank lines; start an action with
+its name followed by a period to emphasize the name.
+
+Saved creatures can be edited and added to the current fight. Initiative rolls
+use 1d20 plus the saved bonus, or the Dexterity modifier if blank. Save edits
+before adding; the fight uses the saved hit points and links back to the custom
+creature and its separate statblock page. Creature edits use revision checks:
+if another session saves first, copy your draft and reload before reapplying it.
+Back up the snapshot before upgrading: older experiment versions cannot read
+the new custom creature collection.
 
 Both roles have a Board tab. The `dm` account can create and edit Markdown
 notes, choosing whether each is visible to players; new notes start hidden.
@@ -106,6 +163,14 @@ experiments/.venv/bin/python -m pip install -r experiments/backend/requirements.
 
 For an existing experiment environment, rerun the `pip install` command to
 install the experiment's current dependencies, including Pydantic and Pillow.
+
+To enable the DM bestiary, set `MONGODB_URI` in the backend process environment
+before starting it. The experiment does not load the repository `.env` file
+automatically. Use a MongoDB account with read access to
+`creatures.basic_list` and `game_helper.custom_bestiary`; the backend never
+writes to these collections. Missing configuration, connection failures and
+invalid data are reported in the Bestiary tab. Other experiment data continues
+to use the local snapshot and does not require MongoDB.
 
 Create accounts while the backend is stopped. Pick a separate password of at
 least 8 characters for each; it is entered interactively:

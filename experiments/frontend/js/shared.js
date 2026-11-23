@@ -42,6 +42,10 @@
     const boardList = document.getElementById("board-list");
     const initiativeTab = document.getElementById("initiative-tab");
     const initiativePanel = document.getElementById("initiative-panel");
+    const bestiaryTab = document.getElementById("bestiary-tab");
+    const bestiaryPanel = document.getElementById("bestiary-panel");
+    const customCreaturesTab = document.getElementById("custom-creatures-tab");
+    const customCreaturesPanel = document.getElementById("custom-creatures-panel");
     const initiativeDm = document.getElementById("initiative-dm");
     const initiativeStatus = document.getElementById("initiative-status");
     const initiativeFields = document.getElementById("initiative-fields");
@@ -93,6 +97,7 @@
       character: "M5 3h14v18H5z M9 8a3 3 0 1 0 6 0 3 3 0 0 0-6 0 M8 18c0-2 2-3 4-3s4 1 4 3",
       board: "M4 5h16v14H4z M8 9h8 M8 13h8 M8 17h4 M12 2v3",
       initiative: "M6 3h12l3 9-9 9-9-9z M6 3l6 9 6-9 M3 12h18 M12 12v9",
+      bestiary: "M4 4h6a4 4 0 0 1 4 4v12a4 4 0 0 0-4-4H4z M14 8a4 4 0 0 1 4-4h2v12h-2a4 4 0 0 0-4 4",
       login: "M13 3h7v18h-7 M4 12h12 M12 8l4 4-4 4",
       logout: "M11 3H4v18h7 M20 12H8 M16 8l4 4-4 4",
       send: "M3 4l18 8-18 8 3-8-3-8z M6 12h15",
@@ -133,6 +138,9 @@
     for (const [selector, icon] of [
       ["#login-form button[type=submit]", "login"], ["#chat-tab", "chat"], ["#notes-tab", "notes"],
       ["#character-tab", "character"], ["#board-tab", "board"], ["#initiative-tab", "initiative"],
+      ["#bestiary-tab", "bestiary"], ["#bestiary-refresh", "reload"],
+      ["#custom-creatures-tab", "bestiary"], ["#bestiary-copy", "add"],
+      ["#bestiary-add-submit", "add"], ["#bestiary-reroll", "reload"],
       ["#logout-button", "logout"], ["#notes-save", "save"], ["#notes-cancel", "cancel"],
       ["#notes-retry", "reload"], ["#character-edit", "edit"], ["#character-reload", "reload"],
       ["#character-add-class", "add"], ["#character-save", "save"], ["#character-cancel", "cancel"],
@@ -142,4 +150,3 @@
     ]) {
       addButtonIcon(document.querySelector(selector), icon);
     }
-

@@ -1,3 +1,7 @@
+    function imageSource(image) {
+      return image.url || `data:${image.media_type};base64,${image.data}`;
+    }
+
     function boardDirty() {
       return boardHeader.value !== boardBaseline.header || boardInput.value !== boardBaseline.content ||
         boardVisible.checked !== boardBaseline.visible || boardImages.files.length > 0 ||
@@ -30,7 +34,7 @@
       boardAttachments.forEach((image, index) => {
         const label = document.createElement("label");
         const preview = document.createElement("img");
-        preview.src = `data:${image.media_type};base64,${image.data}`;
+        preview.src = imageSource(image);
         preview.alt = image.name;
         preview.addEventListener("error", () => {
           boardStatus.textContent = `Could not display image: ${image.name}.`;
@@ -63,7 +67,7 @@
           !validNote(note) || typeof note.visible !== "boolean" || !Array.isArray(note.images) ||
           note.images.some((image) => !image || typeof image.name !== "string" ||
             !["image/png", "image/jpeg", "image/gif", "image/webp"].includes(image.media_type) ||
-            typeof image.data !== "string"))) {
+            !(typeof image.url === "string" || typeof image.data === "string")))) {
           throw new Error("Invalid board response.");
         }
         if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
@@ -76,7 +80,7 @@
           for (const image of note.images) {
             const figure = document.createElement("figure");
             const element = document.createElement("img");
-            element.src = `data:${image.media_type};base64,${image.data}`;
+            element.src = imageSource(image);
             element.alt = image.name;
             element.loading = "lazy";
             element.addEventListener("error", () => {

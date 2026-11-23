@@ -3,7 +3,7 @@ import getpass
 
 from werkzeug.security import generate_password_hash
 
-from app import database, load_database, save_database
+from app import database, load_database
 from app_support.models import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 
 
@@ -26,14 +26,13 @@ def main():
     if password != confirmation:
         parser.error("Passwords do not match.")
     load_database()
-    existing = database.users.find_one({"_id": username})
+    existing = database.logins.find_one({"_id": username})
     role = args.role or (existing["role"] if existing else ("dm" if username == "dm" else "player"))
-    database.users.update_one(
+    database.logins.update_one(
         {"_id": username},
         {"$set": {"password_hash": generate_password_hash(password, method="scrypt"), "role": role}},
         upsert=True,
     )
-    save_database()
     print(f"Saved user {username}.")
 
 

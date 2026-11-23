@@ -88,6 +88,7 @@
     let initiativeSaving = false;
     let initiativeLoadVersion = 0;
     let initiativeRefreshPending = false;
+    let pendingInitiativeState = null;
     const panes = new Map();
     const storageKey = "split-chat-session";
 

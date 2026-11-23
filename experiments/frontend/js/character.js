@@ -128,7 +128,8 @@
       hero.className = "character-hero";
       if (characterData.portrait) {
         const image = document.createElement("img");
-        image.src = `data:${characterData.portrait.media_type};base64,${characterData.portrait.data}`;
+        image.src = characterData.portrait.url ||
+          `data:${characterData.portrait.media_type};base64,${characterData.portrait.data}`;
         image.alt = `Portrait of ${characterData.name}`;
         image.addEventListener("error", () => { characterStatus.textContent = "Could not display portrait."; });
         hero.append(image);

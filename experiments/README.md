@@ -3,9 +3,9 @@
 This is a disposable local proof of concept, separate from the Streamlit app.
 The static frontend runs in the browser; the Flask-SocketIO backend checks local
 credentials and routes private messages between each player and the `dm` account.
-It uses an in-memory mongomock database for experiment data, not Redis or
-existing campaign accounts. The optional read-only bestiary uses MongoDB
-separately. The last 20 messages per conversation and
+It stores experiment data in MongoDB database `game_helper_dev`, separate from
+the Streamlit app's production database. The optional read-only bestiary uses
+the `creatures` database separately. The last 20 messages per conversation and
 any older unread incoming messages are shown on reconnect. The DM sees one chat window per player account (four for
 four players); each player sees only their own conversation with the DM.
 Players also have Chat and Notes tabs. Players can create and edit multiple
@@ -46,9 +46,10 @@ character name, race, gender, portrait, classes and subclass links, passive
 perception and insight, armor class, maximum HP, initiative, six ability scores,
 movement speeds in feet, description, background and story. Blank numeric
 fields mean unknown; no game rules or ability modifiers are calculated.
-Portraits support PNG, JPEG and WebP up to 2 MiB. Data is saved to this
-experiment's snapshot, not the Streamlit database; it is not automatically
-imported. The `dm` account can view every player's full saved sheet, including
+Portraits support PNG, JPEG and WebP up to 2 MiB. Image bytes are uploaded to
+the public Supabase bucket; only the public image URL and metadata are saved to
+this experiment's snapshot. Data is not automatically imported into the
+Streamlit database. The `dm` account can view every player's full saved sheet, including
 description, background and story, in its read-only Characters tab. Players
 without a saved character are listed too; use Reload character to refresh.
 The sheet groups identity, combat, abilities, senses, movement and narrative
@@ -107,7 +108,7 @@ Bestiary links are stored in the experiment snapshot. Back up the snapshot
 before upgrading: older versions of the experiment cannot read these links.
 
 The DM's **Custom creatures** tab stores a separate creature library in the
-experiment's mock database and snapshot, not in the Streamlit MongoDB custom
+experiment's `custom_bestiary` collection, not in the Streamlit MongoDB custom
 bestiary. Create a new creature or select **Copy to custom creatures** on a
 bestiary statblock; the copy is an unsaved draft until saved. Selecting a saved
 creature shows its statblock and fight controls; use **Edit creature** to open
@@ -129,7 +130,8 @@ The DM can attach up to five PNG, JPEG, GIF, or WebP images per board note,
 up to 2 MiB each. Images appear after the note text; edit a note to add images
 or mark existing attachments for removal. Changes take effect when the note is
 saved. Attachments follow the note's visibility and are included in the local
-snapshot; image metadata is not removed.
+snapshot as Supabase public URLs; image bytes are stored only in Supabase.
+Obsolete stored objects are removed after a successful save.
 The DM sees both published and hidden notes, while the server returns only
 published notes to players. Saving persists immediately and notifies connected
 clients to refresh; use Refresh board if disconnected or a refresh fails.
@@ -145,7 +147,8 @@ The snapshot is upgraded when the backend starts; back it up before upgrading,
 because older backend versions cannot read the new personal-note format.
 Deletion is not implemented.
 
-**Experiment only:** messages, notes, character data and images are not encrypted on the server. Tokens are
+**Experiment only:** messages, notes, character metadata and images are not encrypted on the server. Supabase
+image objects are public to anyone with their URLs. Tokens are
 stored in browser session storage, where injected JavaScript can read them.
 There is no login rate limiting, account administration UI, or production
 server. An ngrok tunnel makes the login publicly reachable. Do not use
@@ -164,13 +167,25 @@ experiments/.venv/bin/python -m pip install -r experiments/backend/requirements.
 For an existing experiment environment, rerun the `pip install` command to
 install the experiment's current dependencies, including Pydantic and Pillow.
 
-To enable the DM bestiary, set `MONGODB_URI` in the backend process environment
-before starting it. The experiment does not load the repository `.env` file
-automatically. Use a MongoDB account with read access to
+The experiment loads the repository `.env` file while allowing existing
+process environment variables to override it. Configure `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, and optionally `SUPABASE_IMAGE_BUCKET` (default:
+`images`) before uploading character portraits or board images. Create the
+configured public Supabase Storage bucket first. `SUPABASE_TOKEN` is also
+accepted as an alias for the service-role key. Keep the service-role key in the
+backend environment only; frontend clients receive public image URLs.
+`SUPABASE_PUBLISHABLE_KEY` is also supported when Storage policies allow that
+key to upload and delete objects.
+
+Set `MONGODB_URI` in the backend process environment or repository `.env`
+file. `EXPERIMENT_MONGODB_DATABASE` defaults to `game_helper_dev`. The MongoDB
+account needs read/write access to `boards`, `characters`, `chats`,
+`custom_bestiary`, `initiative`, `logins`, and `private_notes` in that database.
+
+To enable the DM bestiary, use the same MongoDB configuration. The account needs read access to
 `creatures.basic_list` and `game_helper.custom_bestiary`; the backend never
 writes to these collections. Missing configuration, connection failures and
-invalid data are reported in the Bestiary tab. Other experiment data continues
-to use the local snapshot and does not require MongoDB.
+invalid data are reported in the Bestiary tab.
 
 Create accounts while the backend is stopped. Pick a separate password of at
 least 8 characters for each; it is entered interactively:
@@ -214,33 +229,32 @@ private chat. Messages from the old shared chat have no recipient and are not
 displayed in private conversations.
 
 The backend creates `backend/data/` on first use. Accounts, chat, personal notes,
-characters, initiative, saved encounters, board notes, board attachments and token
-revocations live in mongomock collections. Passwords are stored as salted,
+characters, initiative, saved encounters, board notes, image URLs and token
+revocations live in MongoDB. Chat read positions and revocations share the
+`logins` collection with account records. Passwords are stored as salted,
 one-way scrypt hashes, not reversible encrypted passwords. `jwt.key` remains
 the separate signing secret.
 
-Collections are saved in `mongo-snapshot.json` on startup, after each change,
-and on normal shutdown (including Ctrl+C and SIGTERM). A snapshot write must
-succeed before a message, personal or board note, logout or account update is acknowledged. When
-there is no snapshot, existing `users.json`, `history.json` and `revoked.json`
-are imported. Older snapshots without a `users` field import accounts from
-`users.json` while preserving the snapshot's messages and revocations. The
-legacy files are left untouched; after migration the snapshot takes
-precedence and legacy files no longer receive updates. Stop the backend before
-restoring or editing data or running the account-management command.
+On first start against an empty target database, `mongo-snapshot.json` is
+migrated into MongoDB in one transaction. A metadata document in `logins`
+marks migration complete. If MongoDB already contains unmarked experiment data,
+startup stops rather than overwriting it. The legacy `users.json`,
+`history.json` and `revoked.json` files are used only when no snapshot exists.
+After migration, MongoDB is authoritative. `mongo-snapshot.json` remains a
+private local recovery copy refreshed on normal backend shutdown, not during
+individual requests.
 
 These local files are git-ignored; keep them private, back them up if needed,
-and never put them in the frontend directory. Messages, notes and snapshots are not
-encrypted. Deleting the signing key invalidates all tokens; deleting the
-snapshot loses saved accounts, messages, personal and board notes, characters, initiative, encounters and revocations, and may re-import stale legacy
-data. An abrupt termination can bypass shutdown; the most recent successful
-per-change snapshot remains available. The user-management
+and never put them in the frontend directory. MongoDB records and snapshots are
+not encrypted by this application. Deleting the signing key invalidates all
+tokens. Deleting the local snapshot does not delete MongoDB data. The
+user-management
 command also updates passwords, but changing a password does not invalidate
 already issued tokens. Stop the backend before editing users; invalidate all
-sessions by removing the signing key while it is stopped if needed. The JSON
-storage is intended for one backend process; do not run multiple instances or
-edit its files concurrently. Mongomock is a limited MongoDB simulation, not a
-production database or a complete substitute for a MongoDB server.
+sessions by removing the signing key while it is stopped if needed. Do not run
+multiple account-management commands concurrently. MongoDB read and write
+commands are logged with their database, collection and elapsed milliseconds;
+document contents and credentials are not logged.
 
 The backend permits frontend origins `http://127.0.0.1:8000` and
 `http://localhost:8000` by default. These checks are not authentication and do

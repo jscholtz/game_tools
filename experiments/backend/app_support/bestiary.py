@@ -5,6 +5,7 @@ import threading
 
 from pymongo import MongoClient
 
+from app_support.mongo_timing import MongoTimingListener
 from tab_views.data_models import BestiaryEntry, CustomCreature, StandardCreature
 from tab_views.statblock_renderer.standard import adapt_standard_creature
 
@@ -32,7 +33,12 @@ def get_client():
             uri = os.environ.get("MONGODB_URI", "").strip()
             if not uri:
                 raise BestiaryConfigurationError("MONGODB_URI is not configured.")
-            _client = MongoClient(uri, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000)
+            _client = MongoClient(
+                uri,
+                serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=5000,
+                event_listeners=[MongoTimingListener()],
+            )
         return _client
 
 

@@ -76,7 +76,28 @@ class BoardImage(BaseModel):
 
     name: str = Field(min_length=1, max_length=255)
     media_type: Literal["image/png", "image/jpeg", "image/gif", "image/webp"]
-    data: str = Field(min_length=1, max_length=4 * ((MAX_IMAGE_BYTES + 2) // 3), repr=False)
+    data: str | None = Field(
+        default=None, min_length=1, max_length=4 * ((MAX_IMAGE_BYTES + 2) // 3), repr=False
+    )
+    url: str | None = Field(default=None, max_length=2048)
+
+    @model_validator(mode="after")
+    def has_one_image_source(self) -> Self:
+        if (self.data is None) == (self.url is None):
+            raise ValueError("Image must contain exactly one source.")
+        if self.url is not None:
+            try:
+                parsed = urlsplit(self.url)
+                if (
+                    parsed.scheme not in ("http", "https")
+                    or not parsed.hostname
+                    or parsed.username
+                    or parsed.password
+                ):
+                    raise ValueError("Invalid image URL.")
+            except ValueError as error:
+                raise ValueError("Invalid image URL.") from error
+        return self
 
 
 class BoardNoteRequest(NoteRequest):

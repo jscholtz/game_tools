@@ -9,11 +9,24 @@
       document.getElementById("initiative-refresh").disabled = initiativeSaving || loggingOut;
     }
 
-    function initiativeChanged() {
+    function applyInitiativeState(next) {
+      if (!next || !next.tracker || !Number.isInteger(next.revision)) return false;
+      if (initiativeData && next.revision < initiativeData.revision) return false;
+      initiativeData = next;
+      renderInitiative();
+      initiativeStatus.textContent = "";
+      return true;
+    }
+
+    function initiativeChanged(event) {
+      const pushedState = event?.initiative;
       if (initiativeSaving) {
         initiativeRefreshPending = true;
+        pendingInitiativeState = pushedState || null;
       } else if (initiativeDirty) {
         initiativeStatus.textContent = "Initiative changed elsewhere. Copy your edits, then reload before saving.";
+      } else if (initiativeData && pushedState) {
+        applyInitiativeState(pushedState);
       } else if (initiativeData) {
         loadInitiative();
       }
@@ -30,9 +43,7 @@
         if (!response.ok) throw new Error(`Loading initiative failed (${response.status}).`);
         const data = await response.json();
         if (version !== sessionVersion || loadVersion !== initiativeLoadVersion || initiativeDirty || initiativeSaving) return false;
-        initiativeData = data.initiative;
-        renderInitiative();
-        initiativeStatus.textContent = "";
+        if (!applyInitiativeState(data.initiative)) throw new Error("Invalid initiative response.");
         return true;
       } catch (error) {
         if (version !== sessionVersion || loadVersion !== initiativeLoadVersion) return false;
@@ -61,9 +72,8 @@
         const data = await response.json();
         if (version !== sessionVersion) return false;
         if (!response.ok) throw new Error(data.message || `Saving initiative failed (${response.status}).`);
-        initiativeData = data.initiative;
         initiativeDirty = false;
-        renderInitiative();
+        if (!applyInitiativeState(data.initiative)) throw new Error("Invalid initiative response.");
         initiativeStatus.textContent = "Initiative saved.";
         saved = true;
       } catch (error) {
@@ -76,7 +86,14 @@
           updateInitiativeControls();
           if (initiativeRefreshPending) {
             initiativeRefreshPending = false;
-            if (saved) loadInitiative();
+            if (saved) {
+              if (pendingInitiativeState) {
+                applyInitiativeState(pendingInitiativeState);
+                pendingInitiativeState = null;
+              } else {
+                loadInitiative();
+              }
+            }
           }
         }
       }
